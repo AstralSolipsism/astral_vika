@@ -97,37 +97,36 @@ class Datasheet:
         """附件管理器"""
         return self._attachment_manager
     
-    @property
-    def primary_field(self) -> Optional[Field]:
-        """主字段"""
-        return self.fields.get_primary_field()
+    async def aget_primary_field(self) -> Optional[Field]:
+        """主字段（异步）"""
+        return await self.fields.aget_primary_field()
     
-    def refresh(self):
+    async def arefresh(self):
         """
-        刷新数据表缓存
+        刷新数据表缓存（异步）
         """
         # 清除所有缓存
         if hasattr(self.fields, 'cache_clear'):
             self.fields.cache_clear()
-        if hasattr(self._field_manager.all, 'cache_clear'):
-            self._field_manager.all.cache_clear()
-        if hasattr(self._view_manager.all, 'cache_clear'):
-            self._view_manager.all.cache_clear()
+        if hasattr(self._field_manager.aall, 'cache_clear'):
+            self._field_manager.aall.cache_clear()
+        if hasattr(self._view_manager.aall, 'cache_clear'):
+            self._view_manager.aall.cache_clear()
         
         self._meta_cache = None
     
-    def get_fields(self) -> List[Field]:
+    async def aget_fields(self) -> List[Field]:
         """
-        获取字段列表
+        获取字段列表（异步）
         
         Returns:
             字段列表
         """
-        return self.fields.all()
+        return await self.fields.aall()
     
-    def get_field(self, field_name_or_id: str) -> Field:
+    async def aget_field(self, field_name_or_id: str) -> Field:
         """
-        获取指定字段
+        获取指定字段（异步）
         
         Args:
             field_name_or_id: 字段名或字段ID
@@ -135,20 +134,20 @@ class Datasheet:
         Returns:
             字段实例
         """
-        return self.fields.get(field_name_or_id)
+        return await self.fields.aget(field_name_or_id)
     
-    def get_views(self) -> List:
+    async def aget_views(self) -> List:
         """
-        获取视图列表
+        获取视图列表（异步）
         
         Returns:
             视图列表
         """
-        return self.views.all()
+        return await self.views.aall()
     
-    def get_view(self, view_name_or_id: str):
+    async def aget_view(self, view_name_or_id: str):
         """
-        获取指定视图
+        获取指定视图（异步）
         
         Args:
             view_name_or_id: 视图名或视图ID
@@ -156,7 +155,7 @@ class Datasheet:
         Returns:
             视图实例
         """
-        return self.views.get(view_name_or_id)
+        return await self.views.aget(view_name_or_id)
     
     def set_field_key(self, field_key: str):
         """
@@ -213,9 +212,9 @@ class Datasheet:
         """
         return self._field_key_map.get(original_name, original_name)
     
-    def upload_file(self, file_path: str) -> Dict[str, Any]:
+    async def aupload_file(self, file_path: str) -> Dict[str, Any]:
         """
-        上传文件到数据表（原库兼容方法）
+        上传文件到数据表（异步，原库兼容方法）
         
         Args:
             file_path: 文件路径
@@ -223,25 +222,27 @@ class Datasheet:
         Returns:
             上传后的附件信息
         """
-        attachment = self.attachments.upload(file_path)
+        attachment = await self.attachments.aupload(file_path)
         return attachment.raw_data
     
-    def get_meta(self) -> Dict[str, Any]:
+    async def aget_meta(self) -> Dict[str, Any]:
         """
-        获取数据表元数据
+        获取数据表元数据（异步）
         
         Returns:
             数据表元数据
         """
         if self._meta_cache is None:
             # 合并字段和视图信息作为元数据
+            fields = await self.aget_fields()
+            views = await self.aget_views()
             self._meta_cache = {
                 "datasheet": {
                     "id": self._dst_id,
                     "spaceId": self._spc_id
                 },
-                "fields": [field.raw_data for field in self.get_fields()],
-                "views": [view.raw_data for view in self.get_views()]
+                "fields": [field.raw_data for field in fields],
+                "views": [view.raw_data for view in views]
             }
         
         return self._meta_cache

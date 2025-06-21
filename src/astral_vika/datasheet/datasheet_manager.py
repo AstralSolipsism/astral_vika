@@ -52,7 +52,7 @@ class DatasheetManager:
             field_key_map=field_key_map
         )
     
-    def create(
+    async def acreate(
         self,
         name: str,
         description: Optional[str] = None,
@@ -60,7 +60,7 @@ class DatasheetManager:
         pre_filled_records: Optional[List[Dict[str, Any]]] = None
     ) -> Datasheet:
         """
-        创建数据表
+        创建数据表（异步）
         
         Args:
             name: 数据表名称
@@ -71,7 +71,7 @@ class DatasheetManager:
         Returns:
             创建的数据表实例
         """
-        response = self._create_datasheet(name, description, folder_id, pre_filled_records)
+        response = await self._acreate_datasheet(name, description, folder_id, pre_filled_records)
         datasheet_data = response.get('data', {})
         dst_id = datasheet_data.get('id')
         
@@ -80,9 +80,9 @@ class DatasheetManager:
         
         return self.get(dst_id)
     
-    def exists(self, dst_id_or_url: str) -> bool:
+    async def aexists(self, dst_id_or_url: str) -> bool:
         """
-        检查数据表是否存在
+        检查数据表是否存在（异步）
         
         Args:
             dst_id_or_url: 数据表ID或URL
@@ -94,7 +94,7 @@ class DatasheetManager:
             dst_id = get_dst_id(dst_id_or_url)
             # 尝试获取数据表的字段信息来验证存在性
             datasheet = self.get(dst_id)
-            datasheet.get_fields()
+            await datasheet.aget_fields()
             return True
         except Exception:
             return False
@@ -116,15 +116,15 @@ class DatasheetManager:
             "Please delete the datasheet through the web interface."
         )
     
-    def list(self) -> List[Dict[str, Any]]:
+    async def alist(self) -> List[Dict[str, Any]]:
         """
-        获取空间中的数据表列表
+        获取空间中的数据表列表（异步）
         
         Returns:
             数据表列表
         """
         # 通过节点管理器获取数据表节点
-        nodes_response = self._space.nodes._get_nodes()
+        nodes_response = await self._space.nodes._aget_nodes()
         nodes_data = nodes_response.get('data', {}).get('nodes', [])
         
         datasheets = []
@@ -140,9 +140,9 @@ class DatasheetManager:
         
         return datasheets
     
-    def get_datasheet_info(self, dst_id_or_url: str) -> Dict[str, Any]:
+    async def aget_datasheet_info(self, dst_id_or_url: str) -> Dict[str, Any]:
         """
-        获取数据表基本信息
+        获取数据表基本信息（异步）
         
         Args:
             dst_id_or_url: 数据表ID或URL
@@ -151,18 +151,21 @@ class DatasheetManager:
             数据表基本信息
         """
         datasheet = self.get(dst_id_or_url)
-        meta = datasheet.get_meta()
+        meta = await datasheet.aget_meta()
+        
+        fields = await datasheet.aget_fields()
+        views = await datasheet.aget_views()
         
         return {
             'id': datasheet.dst_id,
             'spaceId': datasheet.space_id,
-            'fieldCount': len(datasheet.get_fields()),
-            'viewCount': len(datasheet.get_views()),
+            'fieldCount': len(fields),
+            'viewCount': len(views),
             'meta': meta
         }
     
     # 内部API调用方法
-    def _create_datasheet(
+    async def _acreate_datasheet(
         self,
         name: str,
         description: Optional[str] = None,
@@ -180,7 +183,7 @@ class DatasheetManager:
         if pre_filled_records:
             data["preFilledRecords"] = pre_filled_records
         
-        return self._space._apitable._session.post(endpoint, json=data)
+        return await self._space._apitable.request_adapter.apost(endpoint, json=data)
     
     def __call__(
         self,

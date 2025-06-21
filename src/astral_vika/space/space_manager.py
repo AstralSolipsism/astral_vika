@@ -40,18 +40,30 @@ class SpaceManager:
     
     def list(self) -> List[Dict[str, Any]]:
         """
-        获取空间列表
+        获取空间列表（同步，已弃用）
         
         Returns:
             空间列表
         """
-        response = self._get_spaces()
+        import warnings
+        warnings.warn("The 'list' method is deprecated, use 'alist' instead.", DeprecationWarning)
+        import asyncio
+        return asyncio.run(self.alist())
+
+    async def alist(self) -> List[Dict[str, Any]]:
+        """
+        获取空间列表（异步）
+        
+        Returns:
+            空间列表
+        """
+        response = await self._aget_spaces()
         spaces_data = response.get('data', {}).get('spaces', [])
         return spaces_data
     
-    def exists(self, space_id: str) -> bool:
+    async def aexists(self, space_id: str) -> bool:
         """
-        检查空间是否存在
+        检查空间是否存在（异步）
         
         Args:
             space_id: 空间站ID
@@ -61,7 +73,7 @@ class SpaceManager:
         """
         try:
             space_id = get_space_id(space_id)
-            spaces = self.list()
+            spaces = await self.alist()
             for space in spaces:
                 if space.get('id') == space_id:
                     return True
@@ -69,9 +81,9 @@ class SpaceManager:
         except Exception:
             return False
     
-    def find_by_name(self, space_name: str) -> Optional[Dict[str, Any]]:
+    async def afind_by_name(self, space_name: str) -> Optional[Dict[str, Any]]:
         """
-        根据空间名查找空间
+        根据空间名查找空间（异步）
         
         Args:
             space_name: 空间名称
@@ -79,15 +91,15 @@ class SpaceManager:
         Returns:
             空间信息或None
         """
-        spaces = self.list()
+        spaces = await self.alist()
         for space in spaces:
             if space.get('name') == space_name:
                 return space
         return None
     
-    def get_space_by_name(self, space_name: str) -> Space:
+    async def aget_space_by_name(self, space_name: str) -> Space:
         """
-        根据空间名获取空间
+        根据空间名获取空间（异步）
         
         Args:
             space_name: 空间名称
@@ -98,29 +110,29 @@ class SpaceManager:
         Raises:
             ParameterException: 空间不存在时
         """
-        space_data = self.find_by_name(space_name)
+        space_data = await self.afind_by_name(space_name)
         if not space_data:
             raise ParameterException(f"Space '{space_name}' not found")
         
         return self.get(space_data['id'])
     
-    def get_default_space(self) -> Optional[Space]:
+    async def aget_default_space(self) -> Optional[Space]:
         """
-        获取默认空间（第一个空间）
+        获取默认空间（第一个空间）（异步）
         
         Returns:
             默认空间实例或None
         """
-        spaces = self.list()
+        spaces = await self.alist()
         if spaces:
             return self.get(spaces[0]['id'])
         return None
     
     # 内部API调用方法
-    def _get_spaces(self) -> Dict[str, Any]:
+    async def _aget_spaces(self) -> Dict[str, Any]:
         """获取空间列表的内部API调用"""
         endpoint = "spaces"
-        return self._apitable._session.get(endpoint)
+        return await self._apitable.request_adapter.aget(endpoint)
     
     def __call__(self, space_id: str) -> Space:
         """

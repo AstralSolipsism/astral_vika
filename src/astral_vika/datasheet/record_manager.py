@@ -144,9 +144,9 @@ class RecordManager:
         """
         return self.get_queryset().view(view_id)
     
-    def get(self, record_id: str = None, **kwargs) -> Record:
+    async def aget(self, record_id: str = None, **kwargs) -> Record:
         """
-        获取单条记录
+        获取单条记录（异步）
         
         Args:
             record_id: 记录ID
@@ -157,18 +157,18 @@ class RecordManager:
         """
         if record_id:
             # 通过记录ID获取
-            response = self._get_records(record_ids=[record_id])
+            response = await self._aget_records(record_ids=[record_id])
             records_data = response.get('data', {}).get('records', [])
             if not records_data:
                 raise ParameterException(f"Record with ID '{record_id}' not found")
             return Record(records_data[0], self._datasheet)
         else:
             # 通过过滤条件获取
-            return self.get_queryset().get(**kwargs)
+            return await self.get_queryset().aget(**kwargs)
     
-    def create(self, records: Union[List[Dict[str, Any]], Dict[str, Any]]) -> List[Record]:
+    async def acreate(self, records: Union[List[Dict[str, Any]], Dict[str, Any]]) -> List[Record]:
         """
-        创建记录
+        创建记录（异步）
         
         Args:
             records: 记录数据，可以是单条记录或记录列表
@@ -185,16 +185,16 @@ class RecordManager:
         # 分批创建（每批最多10条）
         created_records = []
         for batch in chunk_list(formatted_records, MAX_RECORDS_PER_PROCESS):
-            response = self._create_records(batch)
+            response = await self._acreate_records(batch)
             batch_records = response.get('data', {}).get('records', [])
             for record_data in batch_records:
                 created_records.append(Record(record_data, self._datasheet))
         
         return created_records
     
-    def bulk_create(self, records: List[Dict[str, Any]]) -> List[Record]:
+    async def abulk_create(self, records: List[Dict[str, Any]]) -> List[Record]:
         """
-        批量创建记录（别名方法）
+        批量创建记录（异步，别名方法）
         
         Args:
             records: 记录数据列表
@@ -202,11 +202,11 @@ class RecordManager:
         Returns:
             创建的记录列表
         """
-        return self.create(records)
+        return await self.acreate(records)
     
-    def update(self, records: Union[List[Union[Record, Dict[str, Any]]], Union[Record, Dict[str, Any]]]) -> List[Record]:
+    async def aupdate(self, records: Union[List[Union[Record, Dict[str, Any]]], Union[Record, Dict[str, Any]]]) -> List[Record]:
         """
-        更新记录
+        更新记录（异步）
         
         Args:
             records: 要更新的记录，可以是Record对象或包含recordId的字典
@@ -234,16 +234,16 @@ class RecordManager:
         # 分批更新
         updated_records = []
         for batch in chunk_list(update_data, MAX_RECORDS_PER_PROCESS):
-            response = self._update_records(batch)
+            response = await self._aupdate_records(batch)
             batch_records = response.get('data', {}).get('records', [])
             for record_data in batch_records:
                 updated_records.append(Record(record_data, self._datasheet))
         
         return updated_records
     
-    def bulk_update(self, records: List[Union[Record, Dict[str, Any]]]) -> List[Record]:
+    async def abulk_update(self, records: List[Union[Record, Dict[str, Any]]]) -> List[Record]:
         """
-        批量更新记录（别名方法）
+        批量更新记录（异步，别名方法）
         
         Args:
             records: 记录列表
@@ -251,11 +251,11 @@ class RecordManager:
         Returns:
             更新后的记录列表
         """
-        return self.update(records)
+        return await self.aupdate(records)
     
-    def delete(self, records: Union[List[Union[str, Record]], Union[str, Record]]) -> bool:
+    async def adelete(self, records: Union[List[Union[str, Record]], Union[str, Record]]) -> bool:
         """
-        删除记录
+        删除记录（异步）
         
         Args:
             records: 要删除的记录ID或Record对象
@@ -280,13 +280,13 @@ class RecordManager:
         
         # 分批删除
         for batch in chunk_list(record_ids, MAX_RECORDS_PER_PROCESS):
-            self._delete_records(batch)
+            await self._adelete_records(batch)
         
         return True
     
-    def bulk_delete(self, record_ids: List[str]) -> bool:
+    async def abulk_delete(self, record_ids: List[str]) -> bool:
         """
-        批量删除记录（别名方法）
+        批量删除记录（异步，别名方法）
         
         Args:
             record_ids: 记录ID列表
@@ -294,10 +294,10 @@ class RecordManager:
         Returns:
             是否删除成功
         """
-        return self.delete(record_ids)
+        return await self.adelete(record_ids)
     
     # 内部API调用方法
-    def _get_records(
+    async def _aget_records(
         self,
         view_id: Optional[str] = None,
         fields: Optional[List[str]] = None,
@@ -335,9 +335,9 @@ class RecordManager:
         if cell_format:
             params['cellFormat'] = cell_format
         
-        return self._datasheet._apitable._session.get(endpoint, params=params)
+        return await self._datasheet._apitable.request_adapter.aget(endpoint, params=params)
     
-    def _create_records(self, records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def _acreate_records(self, records: List[Dict[str, Any]]) -> Dict[str, Any]:
         """创建记录的内部API调用"""
         endpoint = f"datasheets/{self._datasheet._dst_id}/records"
         
@@ -346,9 +346,9 @@ class RecordManager:
             "fieldKey": self._datasheet._field_key
         }
         
-        return self._datasheet._apitable._session.post(endpoint, json=data)
+        return await self._datasheet._apitable.request_adapter.apost(endpoint, json=data)
     
-    def _update_records(self, records: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def _aupdate_records(self, records: List[Dict[str, Any]]) -> Dict[str, Any]:
         """更新记录的内部API调用"""
         endpoint = f"datasheets/{self._datasheet._dst_id}/records"
         
@@ -357,15 +357,15 @@ class RecordManager:
             "fieldKey": self._datasheet._field_key
         }
         
-        return self._datasheet._apitable._session.patch(endpoint, json=data)
+        return await self._datasheet._apitable.request_adapter.apatch(endpoint, json=data)
     
-    def _delete_records(self, record_ids: List[str]) -> Dict[str, Any]:
+    async def _adelete_records(self, record_ids: List[str]) -> Dict[str, Any]:
         """删除记录的内部API调用"""
         endpoint = f"datasheets/{self._datasheet._dst_id}/records"
         
         data = {"recordIds": record_ids}
         
-        return self._datasheet._apitable._session.delete(endpoint, json=data)
+        return await self._datasheet._apitable.request_adapter.adelete(endpoint, json=data)
     
     def __str__(self) -> str:
         return f"RecordManager({self._datasheet})"

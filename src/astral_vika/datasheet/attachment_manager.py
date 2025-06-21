@@ -85,9 +85,9 @@ class AttachmentManager:
         """
         self._datasheet = datasheet
     
-    def upload(self, file_path: str) -> Attachment:
+    async def aupload(self, file_path: str) -> Attachment:
         """
-        上传附件
+        上传附件（异步）
         
         Args:
             file_path: 本地文件路径
@@ -106,7 +106,7 @@ class AttachmentManager:
         if file_size > 1024 * 1024 * 1024:  # 1GB limit
             raise AttachmentException("File size exceeds 1GB limit")
         
-        response = self._upload_file(file_path)
+        response = await self._aupload_file(file_path)
         
         if response.get('success'):
             attachment_data = response.get('data', {})
@@ -115,9 +115,9 @@ class AttachmentManager:
             error_msg = response.get('message', 'Upload failed')
             raise AttachmentException(f"Failed to upload attachment: {error_msg}")
     
-    def upload_file(self, file_path: str) -> Attachment:
+    async def aupload_file(self, file_path: str) -> Attachment:
         """
-        上传文件（原库兼容方法）
+        上传文件（异步，原库兼容方法）
         
         Args:
             file_path: 本地文件路径
@@ -125,15 +125,15 @@ class AttachmentManager:
         Returns:
             上传后的附件对象
         """
-        return self.upload(file_path)
+        return await self.aupload(file_path)
     
-    def download(
-        self, 
-        attachment: Union[Attachment, str, Dict[str, Any]], 
+    async def adownload(
+        self,
+        attachment: Union[Attachment, str, Dict[str, Any]],
         save_path: Optional[str] = None
     ) -> str:
         """
-        下载附件
+        下载附件（异步）
         
         Args:
             attachment: 附件对象、URL或附件数据字典
@@ -171,14 +171,14 @@ class AttachmentManager:
         
         # 下载文件
         try:
-            downloaded_path = self._download_file(url, str(save_path))
+            downloaded_path = await self._adownload_file(url, str(save_path))
             return downloaded_path
         except Exception as e:
             raise AttachmentException(f"Failed to download attachment: {str(e)}")
     
-    def download_from_url(self, url: str, save_path: Optional[str] = None) -> str:
+    async def adownload_from_url(self, url: str, save_path: Optional[str] = None) -> str:
         """
-        从URL下载附件
+        从URL下载附件（异步）
         
         Args:
             url: 附件URL
@@ -187,15 +187,15 @@ class AttachmentManager:
         Returns:
             下载文件的本地路径
         """
-        return self.download(url, save_path)
+        return await self.adownload(url, save_path)
     
     # 内部API调用方法
-    def _upload_file(self, file_path: str) -> Dict[str, Any]:
+    async def _aupload_file(self, file_path: str) -> Dict[str, Any]:
         """上传文件的内部API调用"""
         endpoint = f"datasheets/{self._datasheet._dst_id}/attachments"
         
-        # 准备文件数据 - 使用同步方式处理文件上传
-        return run_sync(self._async_upload_file(endpoint, file_path))
+        # 准备文件数据
+        return await self._async_upload_file(endpoint, file_path)
     
     async def _async_upload_file(self, endpoint: str, file_path: str) -> Dict[str, Any]:
         """异步上传文件"""
@@ -236,9 +236,9 @@ class AttachmentManager:
                     
                     return response_data
     
-    def _download_file(self, url: str, save_path: str) -> str:
+    async def _adownload_file(self, url: str, save_path: str) -> str:
         """下载文件的内部实现"""
-        return run_sync(self._async_download_file(url, save_path))
+        return await self._async_download_file(url, save_path)
     
     async def _async_download_file(self, url: str, save_path: str) -> str:
         """异步下载文件"""

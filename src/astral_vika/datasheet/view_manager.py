@@ -63,20 +63,20 @@ class ViewManager:
         self._datasheet = datasheet
     
     @timed_lru_cache(seconds=300)
-    def all(self) -> List[View]:
+    async def aall(self) -> List[View]:
         """
-        获取所有视图
+        获取所有视图（异步）
         
         Returns:
             视图列表
         """
-        response = self._get_views()
+        response = await self._aget_views()
         views_data = response.get('data', {}).get('views', [])
         return [View(view_data) for view_data in views_data]
     
-    def get(self, view_name_or_id: str) -> View:
+    async def aget(self, view_name_or_id: str) -> View:
         """
-        获取指定视图
+        获取指定视图（异步）
         
         Args:
             view_name_or_id: 视图名或视图ID
@@ -87,7 +87,7 @@ class ViewManager:
         Raises:
             ParameterException: 视图不存在时
         """
-        views = self.all()
+        views = await self.aall()
         
         for view in views:
             if view.name == view_name_or_id or view.id == view_name_or_id:
@@ -95,9 +95,9 @@ class ViewManager:
         
         raise ParameterException(f"View '{view_name_or_id}' not found")
     
-    def get_by_name(self, view_name: str) -> View:
+    async def aget_by_name(self, view_name: str) -> View:
         """
-        根据视图名获取视图
+        根据视图名获取视图（异步）
         
         Args:
             view_name: 视图名
@@ -105,11 +105,11 @@ class ViewManager:
         Returns:
             视图实例
         """
-        return self.get(view_name)
+        return await self.aget(view_name)
     
-    def get_by_id(self, view_id: str) -> View:
+    async def aget_by_id(self, view_id: str) -> View:
         """
-        根据视图ID获取视图
+        根据视图ID获取视图（异步）
         
         Args:
             view_id: 视图ID
@@ -117,21 +117,21 @@ class ViewManager:
         Returns:
             视图实例
         """
-        return self.get(view_id)
+        return await self.aget(view_id)
     
-    def get_default_view(self) -> Optional[View]:
+    async def aget_default_view(self) -> Optional[View]:
         """
-        获取默认视图（通常是第一个视图）
+        获取默认视图（通常是第一个视图）（异步）
         
         Returns:
             默认视图实例或None
         """
-        views = self.all()
+        views = await self.aall()
         return views[0] if views else None
     
-    def filter_by_type(self, view_type: str) -> List[View]:
+    async def afilter_by_type(self, view_type: str) -> List[View]:
         """
-        根据视图类型过滤视图
+        根据视图类型过滤视图（异步）
         
         Args:
             view_type: 视图类型
@@ -139,12 +139,12 @@ class ViewManager:
         Returns:
             匹配的视图列表
         """
-        views = self.all()
+        views = await self.aall()
         return [view for view in views if view.type == view_type]
     
-    def exists(self, view_name_or_id: str) -> bool:
+    async def aexists(self, view_name_or_id: str) -> bool:
         """
-        检查视图是否存在
+        检查视图是否存在（异步）
         
         Args:
             view_name_or_id: 视图名或视图ID
@@ -153,122 +153,125 @@ class ViewManager:
             视图是否存在
         """
         try:
-            self.get(view_name_or_id)
+            await self.aget(view_name_or_id)
             return True
         except ParameterException:
             return False
     
-    def get_view_names(self) -> List[str]:
+    async def aget_view_names(self) -> List[str]:
         """
-        获取所有视图名
+        获取所有视图名（异步）
         
         Returns:
             视图名列表
         """
-        views = self.all()
+        views = await self.aall()
         return [view.name for view in views]
     
-    def get_view_ids(self) -> List[str]:
+    async def aget_view_ids(self) -> List[str]:
         """
-        获取所有视图ID
+        获取所有视图ID（异步）
         
         Returns:
             视图ID列表
         """
-        views = self.all()
+        views = await self.aall()
         return [view.id for view in views]
     
-    def get_view_mapping(self) -> Dict[str, str]:
+    async def aget_view_mapping(self) -> Dict[str, str]:
         """
-        获取视图名到视图ID的映射
+        获取视图名到视图ID的映射（异步）
         
         Returns:
             视图名到视图ID的映射字典
         """
-        views = self.all()
+        views = await self.aall()
         return {view.name: view.id for view in views}
     
-    def get_id_mapping(self) -> Dict[str, str]:
+    async def aget_id_mapping(self) -> Dict[str, str]:
         """
-        获取视图ID到视图名的映射
+        获取视图ID到视图名的映射（异步）
         
         Returns:
             视图ID到视图名的映射字典
         """
-        views = self.all()
+        views = await self.aall()
         return {view.id: view.name for view in views}
     
-    def get_grid_views(self) -> List[View]:
+    async def aget_grid_views(self) -> List[View]:
         """
-        获取表格视图
+        获取表格视图（异步）
         
         Returns:
             表格视图列表
         """
-        return self.filter_by_type("Grid")
+        return await self.afilter_by_type("Grid")
     
-    def get_gallery_views(self) -> List[View]:
+    async def aget_gallery_views(self) -> List[View]:
         """
-        获取画廊视图
+        获取画廊视图（异步）
         
         Returns:
             画廊视图列表
         """
-        return self.filter_by_type("Gallery")
+        return await self.afilter_by_type("Gallery")
     
-    def get_kanban_views(self) -> List[View]:
+    async def aget_kanban_views(self) -> List[View]:
         """
-        获取看板视图
+        获取看板视图（异步）
         
         Returns:
             看板视图列表
         """
-        return self.filter_by_type("Kanban")
+        return await self.afilter_by_type("Kanban")
     
-    def get_form_views(self) -> List[View]:
+    async def aget_form_views(self) -> List[View]:
         """
-        获取表单视图
+        获取表单视图（异步）
         
         Returns:
             表单视图列表
         """
-        return self.filter_by_type("Form")
+        return await self.afilter_by_type("Form")
     
-    def get_calendar_views(self) -> List[View]:
+    async def aget_calendar_views(self) -> List[View]:
         """
-        获取日历视图
+        获取日历视图（异步）
         
         Returns:
             日历视图列表
         """
-        return self.filter_by_type("Calendar")
+        return await self.afilter_by_type("Calendar")
     
-    def get_gantt_views(self) -> List[View]:
+    async def aget_gantt_views(self) -> List[View]:
         """
-        获取甘特视图
+        获取甘特视图（异步）
         
         Returns:
             甘特视图列表
         """
-        return self.filter_by_type("Gantt")
+        return await self.afilter_by_type("Gantt")
     
     # 内部API调用方法
-    def _get_views(self) -> Dict[str, Any]:
+    async def _aget_views(self) -> Dict[str, Any]:
         """获取视图的内部API调用"""
         endpoint = f"datasheets/{self._datasheet._dst_id}/views"
-        return self._datasheet._apitable._session.get(endpoint)
+        return await self._datasheet._apitable.request_adapter.aget(endpoint)
     
-    def __len__(self) -> int:
+    async def __alen__(self) -> int:
         """返回视图数量"""
-        return len(self.all())
+        views = await self.aall()
+        return len(views)
     
-    def __iter__(self):
-        """支持迭代"""
-        return iter(self.all())
+    async def __aiter__(self):
+        """支持异步迭代"""
+        views = await self.aall()
+        for view in views:
+            yield view
     
-    def __contains__(self, view_name_or_id: str) -> bool:
+    async def __acontains__(self, view_name_or_id: str) -> bool:
         """支持in操作符"""
-        return self.exists(view_name_or_id)
+        return await self.aexists(view_name_or_id)
     
     def __str__(self) -> str:
         return f"ViewManager({self._datasheet})"

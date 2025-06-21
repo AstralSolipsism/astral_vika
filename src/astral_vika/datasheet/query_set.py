@@ -222,9 +222,9 @@ class QuerySet:
         new_qs._cell_format = format_type
         return new_qs
     
-    def all(self, max_count: Optional[int] = None) -> List[Record]:
+    async def aall(self, max_count: Optional[int] = None) -> List[Record]:
         """
-        获取所有记录（自动处理分页）
+        获取所有记录（异步，自动处理分页）
         
         Args:
             max_count: 最大记录数，默认为MAX_RECORDS_RETURNED_BY_ALL
@@ -243,7 +243,7 @@ class QuerySet:
             remaining = max_count - current_count
             page_size = min(remaining, self._page_size or MAX_RECORDS_PER_REQUEST)
             
-            response = self._datasheet.records._get_records(
+            response = await self._datasheet.records._aget_records(
                 view_id=self._view_id,
                 fields=self._fields,
                 filter_by_formula=self._filter_formula,
@@ -273,19 +273,19 @@ class QuerySet:
         
         return all_records
     
-    def first(self) -> Optional[Record]:
+    async def afirst(self) -> Optional[Record]:
         """
-        获取第一条记录
+        获取第一条记录（异步）
         
         Returns:
             第一条记录或None
         """
-        records = self.limit(1)._evaluate()
+        records = await self.limit(1)._aevaluate()
         return records[0] if records else None
     
-    def last(self) -> Optional[Record]:
+    async def alast(self) -> Optional[Record]:
         """
-        获取最后一条记录
+        获取最后一条记录（异步）
         
         Returns:
             最后一条记录或None
@@ -303,18 +303,18 @@ class QuerySet:
             # 默认按创建时间降序
             reversed_qs._sort = [{"field": "创建时间", "order": "desc"}]
         
-        records = reversed_qs.limit(1)._evaluate()
+        records = await reversed_qs.limit(1)._aevaluate()
         return records[0] if records else None
     
-    def count(self) -> int:
+    async def acount(self) -> int:
         """
-        获取记录总数
+        获取记录总数（异步）
         
         Returns:
             记录总数
         """
         # 获取第一页数据来获取总数信息
-        response = self._datasheet.records._get_records(
+        response = await self._datasheet.records._aget_records(
             view_id=self._view_id,
             fields=["记录ID"] if self._fields is None else self._fields[:1],
             filter_by_formula=self._filter_formula,
@@ -330,20 +330,21 @@ class QuerySet:
             return data['total']
         else:
             # 需要获取所有记录来计算总数
-            return len(self.all())
+            all_records = await self.aall()
+            return len(all_records)
     
-    def exists(self) -> bool:
+    async def aexists(self) -> bool:
         """
-        检查是否存在匹配的记录
+        检查是否存在匹配的记录（异步）
         
         Returns:
             是否存在记录
         """
-        return self.first() is not None
+        return await self.afirst() is not None
     
-    def get(self, **kwargs) -> Record:
+    async def aget(self, **kwargs) -> Record:
         """
-        获取单条记录（如果有多条或没有记录会抛出异常）
+        获取单条记录（异步，如果有多条或没有记录会抛出异常）
         
         Args:
             **kwargs: 过滤条件
@@ -368,7 +369,7 @@ class QuerySet:
         else:
             queryset = self
         
-        records = queryset.limit(2)._evaluate()
+        records = await queryset.limit(2)._aevaluate()
         
         if not records:
             raise ParameterException("Record matching query does not exist")
@@ -377,12 +378,12 @@ class QuerySet:
         
         return records[0]
     
-    def _evaluate(self) -> List[Record]:
-        """执行查询并返回记录列表"""
+    async def _aevaluate(self) -> List[Record]:
+        """执行查询并返回记录列表（异步）"""
         if self._is_evaluated and self._cached_records is not None:
             return self._cached_records
         
-        response = self._datasheet.records._get_records(
+        response = await self._datasheet.records._aget_records(
             view_id=self._view_id,
             fields=self._fields,
             filter_by_formula=self._filter_formula,
@@ -412,24 +413,26 @@ class QuerySet:
         new_qs._cell_format = self._cell_format
         return new_qs
     
-    # 支持迭代器接口
-    def __iter__(self) -> Iterator[Record]:
-        """迭代器支持"""
-        records = self._evaluate()
-        return iter(records)
+    # 支持异步迭代器接口
+    async def __aiter__(self) -> Iterator[Record]:
+        """异步迭代器支持"""
+        records = await self._aevaluate()
+        for record in records:
+            yield record
     
-    def __len__(self) -> int:
-        """支持len()函数"""
-        return len(self._evaluate())
+    async def __alen__(self) -> int:
+        """支持异步len()函数"""
+        records = await self._aevaluate()
+        return len(records)
     
-    def __getitem__(self, key) -> Union[Record, List[Record]]:
-        """支持索引和切片访问"""
-        records = self._evaluate()
+    async def __agetitem__(self, key) -> Union[Record, List[Record]]:
+        """支持异步索引和切片访问"""
+        records = await self._aevaluate()
         return records[key]
     
-    def __bool__(self) -> bool:
-        """支持bool()判断"""
-        return self.exists()
+    async def __abool__(self) -> bool:
+        """支持异步bool()判断"""
+        return await self.aexists()
     
     def __repr__(self) -> str:
         """字符串表示"""

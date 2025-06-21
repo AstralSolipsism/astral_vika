@@ -32,7 +32,7 @@ class Vika:
         self._api_base = api_base or DEFAULT_API_BASE
         
         # 创建HTTP会话
-        self._session = RequestAdapter(token, self._api_base)
+        self.request_adapter = RequestAdapter(token, self._api_base)
         
         # 初始化管理器
         self._space_manager = SpaceManager(self)
@@ -76,18 +76,18 @@ class Vika:
         """
         self._api_base = api_base.rstrip('/')
         # 重新创建HTTP会话
-        self._session = RequestAdapter(self._token, self._api_base)
+        self.request_adapter = RequestAdapter(self._token, self._api_base)
     
-    def _auth(self) -> bool:
+    async def aauth(self) -> bool:
         """
-        验证API Token（内部方法）
+        验证API Token（异步）
         
         Returns:
             是否认证成功
         """
         try:
             # 通过获取空间列表来验证token
-            self.spaces.list()
+            await self.spaces.alist()
             return True
         except Exception:
             return False
@@ -133,18 +133,18 @@ class Vika:
             field_key_map=field_key_map
         )
     
-    def get_spaces(self) -> list:
+    async def aget_spaces(self) -> list:
         """
-        获取空间列表
+        获取空间列表（异步）
         
         Returns:
             空间列表
         """
-        return self.spaces.list()
+        return await self.spaces.alist()
     
-    def get_space_info(self, space_id: str) -> Dict[str, Any]:
+    async def aget_space_info(self, space_id: str) -> Dict[str, Any]:
         """
-        获取空间信息
+        获取空间信息（异步）
         
         Args:
             space_id: 空间站ID
@@ -153,28 +153,34 @@ class Vika:
             空间信息
         """
         space = self.space(space_id)
-        return space.get_space_info()
+        return await space.aget_space_info()
     
-    def test_connection(self) -> bool:
+    async def atest_connection(self) -> bool:
         """
-        测试连接
+        测试连接（异步）
         
         Returns:
             连接是否正常
         """
-        return self._auth()
+        return await self.aauth()
     
-    def close(self):
-        """关闭客户端连接"""
-        if self._session:
-            self._session.close()
+    async def aclose(self):
+        """关闭客户端连接（异步）"""
+        pass
     
-    # 上下文管理器支持
+    # 同步上下文管理器支持
     def __enter__(self):
         return self
     
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
+        pass
+
+    # 异步上下文管理器支持
+    async def __aenter__(self):
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.aclose()
     
     def __str__(self) -> str:
         return f"Vika(api_base='{self._api_base}')"

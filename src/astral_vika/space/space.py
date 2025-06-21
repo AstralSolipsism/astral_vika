@@ -85,7 +85,7 @@ class Space:
         """
         return self._datasheet_manager.get(dst_id_or_url, field_key, field_key_map)
     
-    def create_datasheet(
+    async def acreate_datasheet(
         self,
         name: str,
         description: Optional[str] = None,
@@ -93,7 +93,7 @@ class Space:
         pre_filled_records: Optional[list] = None
     ):
         """
-        创建数据表
+        创建数据表（异步）
         
         Args:
             name: 数据表名称
@@ -104,29 +104,30 @@ class Space:
         Returns:
             创建的数据表实例
         """
-        return self._datasheet_manager.create(name, description, folder_id, pre_filled_records)
+        return await self._datasheet_manager.acreate(name, description, folder_id, pre_filled_records)
     
-    def get_datasheet_list(self) -> list:
+    async def aget_datasheet_list(self) -> list:
         """
-        获取数据表列表
+        获取数据表列表（异步）
         
         Returns:
             数据表列表
         """
-        return self._datasheet_manager.list()
+        return await self._datasheet_manager.alist()
     
-    def get_node_list(self) -> list:
+    async def aget_node_list(self) -> list:
         """
-        获取节点列表
+        获取节点列表（异步）
         
         Returns:
             节点列表
         """
-        return [node.raw_data for node in self._node_manager.list()]
+        nodes = await self._node_manager.alist()
+        return [node.raw_data for node in nodes]
     
-    def search_nodes(self, query: Optional[str] = None, node_type: Optional[str] = None) -> list:
+    async def asearch_nodes(self, query: Optional[str] = None, node_type: Optional[str] = None) -> list:
         """
-        搜索节点
+        搜索节点（异步）
         
         Args:
             query: 搜索关键词
@@ -135,20 +136,23 @@ class Space:
         Returns:
             搜索结果列表
         """
-        return [node.raw_data for node in self._node_manager.search(query, node_type)]
+        nodes = await self._node_manager.asearch(query, node_type)
+        return [node.raw_data for node in nodes]
     
-    def get_space_info(self) -> Dict[str, Any]:
+    async def aget_space_info(self) -> Dict[str, Any]:
         """
-        获取空间信息
+        获取空间信息（异步）
         
         Returns:
             空间信息
         """
         # 这个方法可能需要专门的API，暂时返回基本信息
+        datasheet_list = await self.aget_datasheet_list()
+        node_list = await self.aget_node_list()
         return {
             'id': self._space_id,
-            'datasheetCount': len(self.get_datasheet_list()),
-            'nodeCount': len(self.get_node_list())
+            'datasheetCount': len(datasheet_list),
+            'nodeCount': len(node_list)
         }
     
     def __str__(self) -> str:
