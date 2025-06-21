@@ -202,10 +202,16 @@ class AttachmentManager:
         file_path = Path(file_path)
         filename = file_path.name
         
-        # 直接使用aiohttp发送请求，绕过我们的封装
-        url = f"https://api.vika.cn/fusion/v1/{endpoint}"
+        # 使用 apitable 实例的 api_base 构建 URL
+        base_url = self._datasheet._apitable.api_base
+        # 确保 base_url 后面有 /fusion/v1/
+        if '/fusion/v1' not in base_url:
+            base_url = base_url.rstrip('/') + '/fusion/v1'
+        
+        url = f"{base_url}/{endpoint}"
+        
         headers = {
-            'Authorization': f'Bearer {self._datasheet._apitable._token}'
+            'Authorization': f'Bearer {self._datasheet._apitable.token}'
         }
         
         # 创建FormData并在文件打开期间发送请求

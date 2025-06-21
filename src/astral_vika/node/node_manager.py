@@ -107,20 +107,18 @@ class NodeManager:
         node_data = response.get('data', {})
         return Node(node_data)
     
-    async def asearch(self, query: Optional[str] = None, node_type: Optional[str] = None) -> List[Node]:
+    async def asearch(self, type: str) -> List[Node]:
         """
-        搜索节点（异步）
+        根据类型搜索节点（异步），通过获取全部节点后在本地进行过滤。
         
         Args:
-            query: 搜索关键词
-            node_type: 节点类型过滤
+            type: 节点类型，例如 'Datasheet'
             
         Returns:
             匹配的节点列表
         """
-        response = await self._asearch_nodes(query, node_type)
-        nodes_data = response.get('data', {}).get('nodes', [])
-        return [Node(node_data) for node_data in nodes_data]
+        all_nodes = await self.alist()
+        return [node for node in all_nodes if node.type == type]
     
     async def afilter_by_type(self, node_type: str) -> List[Node]:
         """
@@ -284,19 +282,6 @@ class NodeManager:
         endpoint = f"spaces/{self._space._space_id}/nodes/{node_id}"
         return await self._space._apitable.request_adapter.aget(endpoint)
     
-    async def _asearch_nodes(self, query: Optional[str] = None, node_type: Optional[str] = None) -> Dict[str, Any]:
-        """搜索节点的内部API调用"""
-        endpoint = f"spaces/{self._space._space_id}/nodes"
-        # 使用v2 API进行搜索
-        endpoint = endpoint.replace('/v1/', '/v2/')
-        
-        params = {}
-        if query:
-            params['query'] = query
-        if node_type:
-            params['type'] = node_type
-        
-        return await self._space._apitable.request_adapter.aget(endpoint, params=params)
     
     async def _acreate_embed_link(
         self,
