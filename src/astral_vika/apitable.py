@@ -5,7 +5,7 @@
 """
 from typing import Optional, Dict, Any
 from .const import DEFAULT_API_BASE
-from .request import RequestAdapter
+from .request import Session
 from .space import SpaceManager
 from .datasheet import Datasheet
 from .node import NodeManager  
@@ -32,7 +32,7 @@ class Vika:
         self._api_base = api_base or DEFAULT_API_BASE
         
         # 创建HTTP会话
-        self.request_adapter = RequestAdapter(token, self._api_base)
+        self.request_adapter = Session(token, self._api_base)
         
         # 初始化管理器
         self._space_manager = SpaceManager(self)
@@ -76,7 +76,7 @@ class Vika:
         """
         self._api_base = api_base.rstrip('/')
         # 重新创建HTTP会话
-        self.request_adapter = RequestAdapter(self._token, self._api_base)
+        self.request_adapter = Session(self._token, self._api_base)
     
     async def aauth(self) -> bool:
         """

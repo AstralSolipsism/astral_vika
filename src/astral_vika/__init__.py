@@ -44,7 +44,7 @@ from .const import *
 from .utils import get_dst_id, get_space_id
 
 # 版本信息
-__version__ = "0.9.0"
+__version__ = "0.9.2"
 __author__ = "AstralSolipsism"
 
 # 主要导出（与原库兼容）

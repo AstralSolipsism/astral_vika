@@ -5,35 +5,38 @@
 """
 import httpx
 from typing import Dict, Any, Optional
+
 from .const import DEFAULT_API_BASE, FUSION_API_PREFIX
-from .utils import handle_response, build_api_url
 from .exceptions import VikaException
+from .utils import build_api_url, handle_response
 
 
-class RequestAdapter:
+class Session:
     """
-    HTTP请求适配器，使用httpx库
+    一个原生异步的HTTP请求会话，使用httpx库。
     """
+
     def __init__(self, token: str, api_base: str = DEFAULT_API_BASE):
         self.token = token
         self.api_base = api_base.rstrip('/')
-        self.headers = {
+        headers = {
             'Authorization': f'Bearer {self.token}',
             'Content-Type': 'application/json',
             'User-Agent': 'vika-py/2.0.0'
         }
+        self.client = httpx.AsyncClient(headers=headers, timeout=30.0)
 
     def _build_url(self, endpoint: str) -> str:
         """构建完整URL"""
         if endpoint.startswith('http'):
             return endpoint
-        
+
         if not endpoint.startswith('/fusion'):
             endpoint = f"{FUSION_API_PREFIX}/{endpoint.lstrip('/')}"
-            
+
         return build_api_url(self.api_base, endpoint)
 
-    async def arequest(
+    async def request(
         self,
         method: str,
         endpoint: str,
@@ -47,59 +50,83 @@ class RequestAdapter:
         发送HTTP请求（异步）
         """
         url = self._build_url(endpoint)
-        
-        request_headers = self.headers.copy()
-        if headers:
-            request_headers.update(headers)
-            
-        if files:
-            request_headers.pop('Content-Type', None)
+
+        # httpx 会自动处理文件上传的 Content-Type
+        # request_headers = self.headers.copy()
+        # if headers:
+        #     request_headers.update(headers)
+        # if files:
+        #     request_headers.pop('Content-Type', None)
 
         try:
-            async with httpx.AsyncClient() as client:
-                response = await client.request(
-                    method=method.upper(),
-                    url=url,
-                    params=params,
-                    json=json,
-                    data=data,
-                    files=files,
-                    headers=request_headers,
-                    timeout=30.0
-                )
-                
-                try:
-                    response_data = response.json()
-                except httpx.JSONDecodeError:
-                    response_data = {'message': f'Response parsing error: {response.text}', 'success': False}
-                
-                return handle_response(response_data, response.status_code)
+            response = await self.client.request(
+                method=method.upper(),
+                url=url,
+                params=params,
+                json=json,
+                data=data,
+                files=files,
+                headers=headers,  # 允许覆盖默认头
+            )
+
+            # raise_for_status 会在 4xx 或 5xx 响应时引发 HTTPStatusError
+            response.raise_for_status()
+
+            try:
+                response_data = response.json()
+            except httpx.JSONDecodeError:
+                response_data = {
+                    'message': f'Response parsing error: {response.text}',
+                    'success': False
+                }
+
+            return handle_response(response_data, response.status_code)
 
         except httpx.HTTPStatusError as e:
-            raise VikaException(f"HTTP error: {e.response.status_code} - {e.response.text}")
+            raise VikaException(
+                f"HTTP error: {e.response.status_code} - {e.response.text}"
+            ) from e
         except httpx.RequestError as e:
-            raise VikaException(f"Network error: {str(e)}")
+            raise VikaException(f"Network error: {str(e)}") from e
 
-    async def aget(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        return await self.arequest('GET', endpoint, params=params)
+    async def get(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return await self.request('GET', endpoint, params=params)
 
-    async def apost(
+    async def aget(
+        self,
+        endpoint: str,
+        params: Optional[Dict[str, Any]] = None,
+        headers: Optional[Dict[str, str]] = None,
+    ) -> Dict[str, Any]:
+        return await self.request('GET', endpoint, params=params, headers=headers)
+
+    async def post(
         self,
         endpoint: str,
         json: Optional[Dict[str, Any]] = None,
         data: Optional[Dict[str, Any]] = None,
         files: Optional[Dict] = None
     ) -> Dict[str, Any]:
-        return await self.arequest('POST', endpoint, json=json, data=data, files=files)
+        return await self.request('POST', endpoint, json=json, data=data, files=files)
 
-    async def apatch(self, endpoint: str, json: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        return await self.arequest('PATCH', endpoint, json=json)
+    async def patch(self, endpoint: str, json: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return await self.request('PATCH', endpoint, json=json)
 
-    async def aput(self, endpoint: str, json: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        return await self.arequest('PUT', endpoint, json=json)
+    async def put(self, endpoint: str, json: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return await self.request('PUT', endpoint, json=json)
 
-    async def adelete(self, endpoint: str, json: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        return await self.arequest('DELETE', endpoint, json=json)
+    async def delete(self, endpoint: str, json: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return await self.request('DELETE', endpoint, json=json)
+
+    async def close(self):
+        """关闭客户端会话"""
+        await self.client.aclose()
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
 
 
-__all__ = ['RequestAdapter']
+__all__ = ['Session']
