@@ -32,7 +32,10 @@ class Session:
             return endpoint
 
         if not endpoint.startswith('/fusion'):
-            endpoint = f"{FUSION_API_PREFIX}/{endpoint.lstrip('/')}"
+            endpoint = f"{FUSION_API_PREFIX.rstrip('/')}/{endpoint.lstrip('/')}"
+        else:
+            # 如果已经是完整的 /fusion/vX/ 路径，则直接使用
+            pass
 
         return build_api_url(self.api_base, endpoint)
 

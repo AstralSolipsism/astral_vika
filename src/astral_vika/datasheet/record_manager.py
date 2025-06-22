@@ -304,6 +304,7 @@ class RecordManager:
         filter_by_formula: Optional[str] = None,
         max_records: Optional[int] = None,
         page_size: Optional[int] = None,
+        page_num: Optional[int] = None,
         page_token: Optional[str] = None,
         sort: Optional[List[Dict[str, str]]] = None,
         record_ids: Optional[List[str]] = None,
@@ -322,10 +323,13 @@ class RecordManager:
             params['filterByFormula'] = filter_by_formula
         if max_records:
             params['maxRecords'] = max_records
-        if page_size:
-            params['pageSize'] = page_size
+        
+        params['pageSize'] = page_size or 100
+        
         if page_token:
             params['pageToken'] = page_token
+            
+        params['pageNum'] = page_num or 1
         if sort:
             params['sort'] = sort
         if record_ids:

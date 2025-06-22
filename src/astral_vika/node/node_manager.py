@@ -6,6 +6,7 @@
 import logging
 from typing import Dict, Any, Optional, List
 from ..exceptions import ParameterException, VikaException
+from ..types.response import NodeData, NodesData
 
 
 class Node:
@@ -44,6 +45,16 @@ class Node:
         """子节点列表"""
         children_data = self._data.get('children', [])
         return [Node(child_data) for child_data in children_data]
+
+    @property
+    def is_fav(self) -> Optional[bool]:
+        """是否收藏"""
+        return self._data.get('isFav')
+
+    @property
+    def permission(self) -> Optional[int]:
+        """节点权限"""
+        return self._data.get('permission')
     
     @property
     def raw_data(self) -> Dict[str, Any]:
@@ -107,18 +118,30 @@ class NodeManager:
         node_data = response.get('data', {})
         return Node(node_data)
     
-    async def asearch(self, type: str) -> List[Node]:
+    async def asearch(
+        self,
+        node_type: Optional[str] = None,
+        permission: Optional[int] = None
+    ) -> List[Node]:
         """
-        根据类型搜索节点（异步），通过获取全部节点后在本地进行过滤。
+        根据类型和权限搜索节点（异步），使用v2 API。
         
         Args:
-            type: 节点类型，例如 'Datasheet'
+            node_type: 节点类型，例如 'Datasheet'
+            permission: 权限级别
             
         Returns:
             匹配的节点列表
         """
-        all_nodes = await self.alist()
-        return [node for node in all_nodes if node.type == type]
+        params = {}
+        if node_type:
+            params['type'] = node_type
+        if permission is not None:
+            params['permission'] = permission
+        
+        response = await self._asearch_nodes(params)
+        nodes_data = response.get('data', {}).get('nodes', [])
+        return [Node(node_data) for node_data in nodes_data]
     
     async def afilter_by_type(self, node_type: str) -> List[Node]:
         """
@@ -270,12 +293,16 @@ class NodeManager:
             return await self._space._apitable.request_adapter.aget(endpoint)
         except VikaException as e:
             logging.error(f"Failed to get nodes for space {self._space._space_id}: {e}", exc_info=True)
-            # 为了保持函数签名，仍然可以返回一个空的成功结构或重新引发异常
-            # 这里选择返回一个空的成功结构，以避免上层调用崩溃
             return {"success": False, "code": e.code if hasattr(e, 'code') else 500, "message": str(e), "data": {"nodes": []}}
         except Exception as e:
             logging.error(f"An unexpected error occurred while getting nodes for space {self._space._space_id}: {e}", exc_info=True)
             return {"success": False, "code": 500, "message": str(e), "data": {"nodes": []}}
+
+    async def _asearch_nodes(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """搜索节点的内部API调用 (v2)"""
+        # 注意：硬编码v2 API路径。这是一种临时解决方案。
+        v2_endpoint = f"/fusion/v2/spaces/{self._space._space_id}/nodes"
+        return await self._space._apitable.request_adapter.aget(v2_endpoint, params=params)
     
     async def _aget_node_detail(self, node_id: str) -> Dict[str, Any]:
         """获取节点详情的内部API调用"""

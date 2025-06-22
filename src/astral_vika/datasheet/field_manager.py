@@ -4,8 +4,10 @@
 兼容原vika.py库的FieldManager类
 """
 from typing import List, Dict, Any, Optional
+from pydantic import BaseModel
 from ..utils import timed_lru_cache
 from ..exceptions import ParameterException, FieldNotFoundException
+from ..types.response import CreateFieldResponseData
 
 
 class Field:
@@ -183,52 +185,51 @@ class FieldManager:
     
     async def acreate(
         self,
-        name: str,
         field_type: str,
-        property: Optional[Dict[str, Any]] = None
-    ) -> Field:
+        name: str,
+        property: Optional[BaseModel] = None
+    ) -> CreateFieldResponseData:
         """
         创建字段（异步）
-        
+
         Args:
-            name: 字段名
             field_type: 字段类型
-            property: 字段属性
-            
+            name: 字段名
+            property: 字段属性，使用Pydantic模型
+
         Returns:
-            创建的字段实例
+            包含新字段ID和名称的响应数据
         """
         if not self._datasheet._spc_id:
             raise ParameterException("Space ID is required for field creation")
-        
+
         response = await self._acreate_field(name, field_type, property)
-        field_data = response.get('data', {})
         
         # 清除缓存以获取最新字段列表
         self.aall.cache_clear()
         
-        return Field(field_data)
-    
-    async def adelete(self, field_name_or_id: str) -> bool:
+        return CreateFieldResponseData(**response.get('data', {}))
+
+    async def adelete(self, field_name_or_id: str) -> Dict[str, Any]:
         """
         删除字段（异步）
-        
+
         Args:
             field_name_or_id: 字段名或字段ID
-            
+
         Returns:
-            是否删除成功
+            API响应字典
         """
         if not self._datasheet._spc_id:
             raise ParameterException("Space ID is required for field deletion")
-        
+
         field = await self.aget(field_name_or_id)
-        await self._adelete_field(field.id)
-        
+        response = await self._adelete_field(field.id)
+
         # 清除缓存以获取最新字段列表
         self.aall.cache_clear()
-        
-        return True
+
+        return response
     
     async def aget_field_names(self) -> List[str]:
         """
@@ -280,7 +281,7 @@ class FieldManager:
         self,
         name: str,
         field_type: str,
-        property: Optional[Dict[str, Any]] = None
+        property: Optional[BaseModel] = None
     ) -> Dict[str, Any]:
         """创建字段的内部API调用"""
         endpoint = f"spaces/{self._datasheet._spc_id}/datasheets/{self._datasheet._dst_id}/fields"
@@ -290,7 +291,7 @@ class FieldManager:
             "type": field_type
         }
         if property:
-            data["property"] = property
+            data["property"] = property.model_dump(exclude_none=True)
         
         return await self._datasheet._apitable.request_adapter.apost(endpoint, json=data)
     

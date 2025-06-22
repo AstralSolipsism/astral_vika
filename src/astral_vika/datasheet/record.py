@@ -3,8 +3,23 @@
 
 兼容原vika.py库的Record类
 """
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional, Union, List
+from datetime import datetime
+from pydantic import parse_obj_as
 from ..exceptions import ParameterException, FieldNotFoundException
+from ..types.response import AttachmentData, UrlData, WorkDocData, Field
+from ..types.unit_model import MemberModel
+
+# 字段类型到Pydantic模型的映射
+FIELD_TYPE_MAP = {
+    "Attachment": AttachmentData,
+    "Member": MemberModel,
+    "URL": UrlData,
+    "WorkDoc": WorkDocData,
+}
+
+# 需要解析为列表的字段类型
+LIST_FIELD_TYPES = {"Attachment", "Member", "WorkDoc", "MultiSelect"}
 
 
 class Record:
@@ -24,7 +39,7 @@ class Record:
         """
         self._data = record_data
         self._datasheet = datasheet
-        self._fields_cache = None
+        self._field_cache: Dict[str, Any] = {}
     
     @property
     def record_id(self) -> Optional[str]:
@@ -56,19 +71,76 @@ class Record:
         """原始数据"""
         return self._data
     
-    def get_field(self, field_name: str, default=None) -> Any:
+    def get(self, field_name: str) -> Any:
         """
-        获取字段值
-        
+        获取经过类型解析后的字段值。
+        结果会被缓存，后续访问将直接返回缓存值。
+
         Args:
             field_name: 字段名
-            default: 默认值
-            
+
         Returns:
-            字段值
+            解析后的字段值
+
+        Raises:
+            FieldNotFoundException: 如果数据表中不存在该字段。
         """
-        return self.fields.get(field_name, default)
-    
+        if field_name in self._field_cache:
+            return self._field_cache[field_name]
+
+        field_meta = self._datasheet.fields.get(field_name)
+        if not field_meta:
+            raise FieldNotFoundException(f"Field '{field_name}' not found in datasheet.")
+
+        raw_value = self.fields.get(field_name)
+        if raw_value is None:
+            return None
+
+        field_type = field_meta.type
+        parsed_value = raw_value
+
+        try:
+            if field_type in FIELD_TYPE_MAP:
+                model = FIELD_TYPE_MAP[field_type]
+                if field_type in LIST_FIELD_TYPES:
+                    parsed_value = parse_obj_as(List[model], raw_value)
+                else:
+                    parsed_value = parse_obj_as(model, raw_value)
+            elif field_type == "DateTime" and isinstance(raw_value, int):
+                # Vika时间戳是毫秒，需要转换为秒
+                parsed_value = datetime.fromtimestamp(raw_value / 1000)
+        except Exception as e:
+            # 如果解析失败，返回原始值并打印警告
+            # 在实际应用中可能需要更完善的日志记录
+            print(f"Warning: Failed to parse field '{field_name}' with type '{field_type}'. "
+                  f"Returning raw value. Error: {e}")
+            parsed_value = raw_value
+
+        self._field_cache[field_name] = parsed_value
+        return parsed_value
+
+    def __getattr__(self, name: str) -> Any:
+        """
+        允许通过属性访问字段，例如：record.title
+        """
+        try:
+            # 将驼峰命名转换为下划线命名，以匹配可能的字段名
+            # 例如：record.recordId -> self.get("recordId")
+            # 注意：这里仅为示例，实际字段名以datasheet中的为准
+            return self.get(name)
+        except FieldNotFoundException:
+            # 如果字段不存在，则抛出标准的AttributeError
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+    def get_field(self, field_name: str, default=None) -> Any:
+        """
+        获取字段值（兼容旧版，建议使用 record.get(field_name) 或 record.field_name）
+        """
+        try:
+            return self.get(field_name)
+        except FieldNotFoundException:
+            return default
+
     def set_field(self, field_name: str, value: Any):
         """
         设置字段值
@@ -83,7 +155,7 @@ class Record:
     
     def __getitem__(self, field_name: str) -> Any:
         """支持下标访问字段"""
-        return self.get_field(field_name)
+        return self.get(field_name)
     
     def __setitem__(self, field_name: str, value: Any):
         """支持下标设置字段"""
@@ -165,11 +237,12 @@ class Record:
     
     def __str__(self) -> str:
         """字符串表示"""
-        return f"Record({self.record_id}, fields={len(self.fields)})"
+        return f"Record(id='{self.record_id}')"
     
     def __repr__(self) -> str:
         """详细字符串表示"""
-        return f"Record(record_id='{self.record_id}', fields={self.fields})"
+        # 为了避免在repr中触发所有字段的解析，我们只显示原始字段
+        return f"Record(record_id='{self.record_id}', raw_fields={self.fields})"
     
     def __eq__(self, other) -> bool:
         """相等比较"""
