@@ -3,7 +3,7 @@
 
 兼容原vika.py库的Datasheet类
 """
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Callable, Awaitable
 from .record_manager import RecordManager
 from .field_manager import FieldManager, Field
 from .view_manager import ViewManager
@@ -25,7 +25,8 @@ class Datasheet:
         dst_id: str,
         spc_id: Optional[str] = None,
         field_key: str = "name",
-        field_key_map: Optional[Dict[str, str]] = None
+        field_key_map: Optional[Dict[str, str]] = None,
+        status_callback: Optional[Callable[[str], Awaitable[None]]] = None
     ):
         """
         初始化数据表
@@ -42,12 +43,13 @@ class Datasheet:
         self._spc_id = spc_id
         self._field_key = field_key
         self._field_key_map = field_key_map or {}
+        self._status_callback = status_callback
         
         # 初始化管理器
         self._record_manager = RecordManager(self)
         self._field_manager = FieldManager(self)
         self._view_manager = ViewManager(self)
-        self._attachment_manager = AttachmentManager(self)
+        self._attachment_manager = AttachmentManager(self, status_callback=self._status_callback)
         
         # 缓存
         self._meta_cache = None
