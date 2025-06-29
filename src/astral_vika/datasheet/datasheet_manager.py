@@ -183,7 +183,7 @@ class DatasheetManager:
         if pre_filled_records:
             data["preFilledRecords"] = pre_filled_records
         
-        return await self._space._apitable.request_adapter.apost(endpoint, json=data)
+        return await self._space._apitable.request_adapter.post(endpoint, json=data)
     
     def __call__(
         self,

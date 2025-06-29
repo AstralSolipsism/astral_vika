@@ -350,7 +350,7 @@ class RecordManager:
             "fieldKey": self._datasheet._field_key
         }
         
-        return await self._datasheet._apitable.request_adapter.apost(endpoint, json=data)
+        return await self._datasheet._apitable.request_adapter.post(endpoint, json=data)
     
     async def _aupdate_records(self, records: List[Dict[str, Any]]) -> Dict[str, Any]:
         """更新记录的内部API调用"""
@@ -361,7 +361,7 @@ class RecordManager:
             "fieldKey": self._datasheet._field_key
         }
         
-        return await self._datasheet._apitable.request_adapter.apatch(endpoint, json=data)
+        return await self._datasheet._apitable.request_adapter.patch(endpoint, json=data)
     
     async def _adelete_records(self, record_ids: List[str]) -> Dict[str, Any]:
         """删除记录的内部API调用"""
@@ -369,7 +369,7 @@ class RecordManager:
         
         data = {"recordIds": record_ids}
         
-        return await self._datasheet._apitable.request_adapter.adelete(endpoint, json=data)
+        return await self._datasheet._apitable.request_adapter.delete(endpoint, json=data)
     
     def __str__(self) -> str:
         return f"RecordManager({self._datasheet})"

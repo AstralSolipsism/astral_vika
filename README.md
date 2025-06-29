@@ -7,3 +7,10 @@
 
 该项目是为了连接 [AstrBot](https://github.com/AstrBotDevs/AstrBot) 与 Vika 而诞生，但作为一个独立的库，它可以用于任何需要异步访问 Vika 数据的 Python 项目。
 
+
+## 更新日志
+
+### 版本 1.1
+
+*   修复了 API 调用中的方法名拼写错误（例如 `apost` -> `post`）。
+*   对代码库进行了全面审计，确保了与维格表 API 交互的健壮性。

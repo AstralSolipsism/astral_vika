@@ -325,7 +325,7 @@ class NodeManager:
         if payload:
             data['payload'] = payload
         
-        return await self._space._apitable.request_adapter.apost(endpoint, json=data)
+        return await self._space._apitable.request_adapter.post(endpoint, json=data)
     
     async def _aget_embed_links(self, node_id: str) -> Dict[str, Any]:
         """获取嵌入链接的内部API调用"""
@@ -335,7 +335,7 @@ class NodeManager:
     async def _adelete_embed_link(self, node_id: str, link_id: str) -> Dict[str, Any]:
         """删除嵌入链接的内部API调用"""
         endpoint = f"spaces/{self._space._space_id}/nodes/{node_id}/embedlinks/{link_id}"
-        return await self._space._apitable.request_adapter.adelete(endpoint)
+        return await self._space._apitable.request_adapter.delete(endpoint)
     
     async def __len__(self) -> int:
         """返回节点数量"""

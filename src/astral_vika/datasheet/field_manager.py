@@ -293,12 +293,12 @@ class FieldManager:
         if property:
             data["property"] = property.model_dump(exclude_none=True)
         
-        return await self._datasheet._apitable.request_adapter.apost(endpoint, json=data)
+        return await self._datasheet._apitable.request_adapter.post(endpoint, json=data)
     
     async def _adelete_field(self, field_id: str) -> Dict[str, Any]:
         """删除字段的内部API调用"""
         endpoint = f"spaces/{self._datasheet._spc_id}/datasheets/{self._datasheet._dst_id}/fields/{field_id}"
-        return await self._datasheet._apitable.request_adapter.adelete(endpoint)
+        return await self._datasheet._apitable.request_adapter.delete(endpoint)
     
     async def __alen__(self) -> int:
         """返回字段数量"""

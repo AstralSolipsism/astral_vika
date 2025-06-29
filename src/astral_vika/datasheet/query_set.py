@@ -80,7 +80,10 @@ class QuerySet:
         # 处理其他关键字参数
         for key, value in kwargs.items():
             if value is not None:
-                setattr(new_qs, f'_{key}', value)
+                if key == 'filter_by_formula':
+                    new_qs._filter_formula = value
+                else:
+                    setattr(new_qs, f'_{key}', value)
                 
         return new_qs
     
