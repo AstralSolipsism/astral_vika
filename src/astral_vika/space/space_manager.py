@@ -132,7 +132,7 @@ class SpaceManager:
     async def _aget_spaces(self) -> Dict[str, Any]:
         """获取空间列表的内部API调用"""
         endpoint = "spaces"
-        return await self._apitable.request_adapter.aget(endpoint)
+        return await self._apitable.request_adapter.get(endpoint)
     
     def __call__(self, space_id: str) -> Space:
         """

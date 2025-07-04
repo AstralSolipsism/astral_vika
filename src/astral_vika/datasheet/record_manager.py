@@ -3,7 +3,7 @@
 
 兼容原vika.py库的RecordManager类
 """
-from typing import List, Dict, Any, Optional, Union
+from typing import List, Dict, Any, Optional, Union, Sequence
 from .record import Record
 from .query_set import QuerySet
 from ..const import MAX_RECORDS_PER_PROCESS
@@ -144,7 +144,7 @@ class RecordManager:
         """
         return self.get_queryset().view(view_id)
     
-    async def aget(self, record_id: str = None, **kwargs) -> Record:
+    async def aget(self, record_id: Optional[str] = None, **kwargs) -> Record:
         """
         获取单条记录（异步）
         
@@ -253,7 +253,7 @@ class RecordManager:
         """
         return await self.aupdate(records)
     
-    async def adelete(self, records: Union[List[Union[str, Record]], Union[str, Record]]) -> bool:
+    async def adelete(self, records: Union[Sequence[Union[str, Record]], str, Record]) -> bool:
         """
         删除记录（异步）
         
@@ -263,7 +263,7 @@ class RecordManager:
         Returns:
             是否删除成功
         """
-        if not isinstance(records, list):
+        if isinstance(records, (str, Record)):
             records = [records]
         
         # 提取记录ID
@@ -305,37 +305,34 @@ class RecordManager:
         max_records: Optional[int] = None,
         page_size: Optional[int] = None,
         page_token: Optional[str] = None,
+        page_num: Optional[int] = None,
         sort: Optional[List[Dict[str, str]]] = None,
         record_ids: Optional[List[str]] = None,
         field_key: Optional[str] = None,
-        cell_format: Optional[str] = None
+        cell_format: Optional[str] = None,
+        **kwargs
     ) -> Dict[str, Any]:
         """获取记录的内部API调用"""
         endpoint = f"datasheets/{self._datasheet._dst_id}/records"
         
-        params = {}
-        if view_id:
-            params['viewId'] = view_id
-        if fields:
-            params['fields'] = fields
-        if filter_by_formula:
-            params['filterByFormula'] = filter_by_formula
-        if max_records:
-            params['maxRecords'] = max_records
-        if page_size:
-            params['pageSize'] = page_size
-        if page_token:
-            params['pageToken'] = page_token
-        if sort:
-            params['sort'] = sort
-        if record_ids:
-            params['recordIds'] = record_ids
-        if field_key:
-            params['fieldKey'] = field_key
-        if cell_format:
-            params['cellFormat'] = cell_format
+        params = {
+            "viewId": view_id,
+            "fields": fields,
+            "filterByFormula": filter_by_formula,
+            "maxRecords": max_records,
+            "pageSize": page_size,
+            "pageToken": page_token,
+            "pageNum": page_num,
+            "sort": sort,
+            "recordIds": record_ids,
+            "fieldKey": field_key,
+            "cellFormat": cell_format,
+            **kwargs
+        }
+        # 清理掉值为 None 的参数
+        params = {k: v for k, v in params.items() if v is not None}
         
-        return await self._datasheet._apitable.request_adapter.aget(endpoint, params=params)
+        return await self._datasheet._apitable.request_adapter.get(endpoint, params=params)
     
     async def _acreate_records(self, records: List[Dict[str, Any]]) -> Dict[str, Any]:
         """创建记录的内部API调用"""
@@ -346,7 +343,7 @@ class RecordManager:
             "fieldKey": self._datasheet._field_key
         }
         
-        return await self._datasheet._apitable.request_adapter.apost(endpoint, json=data)
+        return await self._datasheet._apitable.request_adapter.post(endpoint, json=data)
     
     async def _aupdate_records(self, records: List[Dict[str, Any]]) -> Dict[str, Any]:
         """更新记录的内部API调用"""
@@ -357,7 +354,7 @@ class RecordManager:
             "fieldKey": self._datasheet._field_key
         }
         
-        return await self._datasheet._apitable.request_adapter.apatch(endpoint, json=data)
+        return await self._datasheet._apitable.request_adapter.patch(endpoint, json=data)
     
     async def _adelete_records(self, record_ids: List[str]) -> Dict[str, Any]:
         """删除记录的内部API调用"""
@@ -365,7 +362,7 @@ class RecordManager:
         
         data = {"recordIds": record_ids}
         
-        return await self._datasheet._apitable.request_adapter.adelete(endpoint, json=data)
+        return await self._datasheet._apitable.request_adapter.delete(endpoint, json=data)
     
     def __str__(self) -> str:
         return f"RecordManager({self._datasheet})"

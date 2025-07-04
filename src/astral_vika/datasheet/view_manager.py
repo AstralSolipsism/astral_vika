@@ -256,7 +256,7 @@ class ViewManager:
     async def _aget_views(self) -> Dict[str, Any]:
         """获取视图的内部API调用"""
         endpoint = f"datasheets/{self._datasheet._dst_id}/views"
-        return await self._datasheet._apitable.request_adapter.aget(endpoint)
+        return await self._datasheet._apitable.request_adapter.get(endpoint)
     
     async def __alen__(self) -> int:
         """返回视图数量"""

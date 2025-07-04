@@ -175,7 +175,7 @@ class DatasheetManager:
         """创建数据表的内部API调用"""
         endpoint = f"spaces/{self._space._space_id}/datasheets"
         
-        data = {"name": name}
+        data: Dict[str, Any] = {"name": name}
         if description:
             data["description"] = description
         if folder_id:
@@ -183,7 +183,7 @@ class DatasheetManager:
         if pre_filled_records:
             data["preFilledRecords"] = pre_filled_records
         
-        return await self._space._apitable.request_adapter.apost(endpoint, json=data)
+        return await self._space._apitable.request_adapter.post(endpoint, json=data)
     
     def __call__(
         self,

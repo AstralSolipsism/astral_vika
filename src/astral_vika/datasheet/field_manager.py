@@ -205,7 +205,7 @@ class FieldManager:
         field_data = response.get('data', {})
         
         # 清除缓存以获取最新字段列表
-        self.aall.cache_clear()
+        self.aall.cache_clear()  # type: ignore
         
         return Field(field_data)
     
@@ -226,7 +226,7 @@ class FieldManager:
         await self._adelete_field(field.id)
         
         # 清除缓存以获取最新字段列表
-        self.aall.cache_clear()
+        self.aall.cache_clear()  # type: ignore
         
         return True
     
@@ -274,7 +274,7 @@ class FieldManager:
     async def _aget_fields(self) -> Dict[str, Any]:
         """获取字段的内部API调用"""
         endpoint = f"datasheets/{self._datasheet._dst_id}/fields"
-        return await self._datasheet._apitable.request_adapter.aget(endpoint)
+        return await self._datasheet._apitable.request_adapter.get(endpoint)
     
     async def _acreate_field(
         self,
@@ -285,19 +285,19 @@ class FieldManager:
         """创建字段的内部API调用"""
         endpoint = f"spaces/{self._datasheet._spc_id}/datasheets/{self._datasheet._dst_id}/fields"
         
-        data = {
+        data: Dict[str, Any] = {
             "name": name,
             "type": field_type
         }
         if property:
             data["property"] = property
         
-        return await self._datasheet._apitable.request_adapter.apost(endpoint, json=data)
+        return await self._datasheet._apitable.request_adapter.post(endpoint, json=data)
     
     async def _adelete_field(self, field_id: str) -> Dict[str, Any]:
         """删除字段的内部API调用"""
         endpoint = f"spaces/{self._datasheet._spc_id}/datasheets/{self._datasheet._dst_id}/fields/{field_id}"
-        return await self._datasheet._apitable.request_adapter.adelete(endpoint)
+        return await self._datasheet._apitable.request_adapter.delete(endpoint)
     
     async def __alen__(self) -> int:
         """返回字段数量"""

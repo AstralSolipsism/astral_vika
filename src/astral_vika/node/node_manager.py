@@ -267,7 +267,7 @@ class NodeManager:
         """获取节点列表的内部API调用"""
         endpoint = f"spaces/{self._space._space_id}/nodes"
         try:
-            return await self._space._apitable.request_adapter.aget(endpoint)
+            return await self._space._apitable.request_adapter.get(endpoint)
         except VikaException as e:
             logging.error(f"Failed to get nodes for space {self._space._space_id}: {e}", exc_info=True)
             # 为了保持函数签名，仍然可以返回一个空的成功结构或重新引发异常
@@ -280,7 +280,7 @@ class NodeManager:
     async def _aget_node_detail(self, node_id: str) -> Dict[str, Any]:
         """获取节点详情的内部API调用"""
         endpoint = f"spaces/{self._space._space_id}/nodes/{node_id}"
-        return await self._space._apitable.request_adapter.aget(endpoint)
+        return await self._space._apitable.request_adapter.get(endpoint)
     
     
     async def _acreate_embed_link(
@@ -298,17 +298,17 @@ class NodeManager:
         if payload:
             data['payload'] = payload
         
-        return await self._space._apitable.request_adapter.apost(endpoint, json=data)
+        return await self._space._apitable.request_adapter.post(endpoint, json=data)
     
     async def _aget_embed_links(self, node_id: str) -> Dict[str, Any]:
         """获取嵌入链接的内部API调用"""
         endpoint = f"spaces/{self._space._space_id}/nodes/{node_id}/embedlinks"
-        return await self._space._apitable.request_adapter.aget(endpoint)
+        return await self._space._apitable.request_adapter.get(endpoint)
     
     async def _adelete_embed_link(self, node_id: str, link_id: str) -> Dict[str, Any]:
         """删除嵌入链接的内部API调用"""
         endpoint = f"spaces/{self._space._space_id}/nodes/{node_id}/embedlinks/{link_id}"
-        return await self._space._apitable.request_adapter.adelete(endpoint)
+        return await self._space._apitable.request_adapter.delete(endpoint)
     
     async def __len__(self) -> int:
         """返回节点数量"""

@@ -3,7 +3,10 @@
 
 兼容原vika.py库的QuerySet类，支持链式调用
 """
-from typing import List, Dict, Any, Optional, Union, Iterator
+import asyncio
+import math
+import logging
+from typing import List, Dict, Any, Optional, Union, AsyncIterator
 from .record import Record
 from ..const import MAX_RECORDS_PER_REQUEST, MAX_RECORDS_RETURNED_BY_ALL
 from ..exceptions import ParameterException
@@ -27,7 +30,7 @@ class QuerySet:
         self._view_id = None
         self._fields = None
         self._filter_formula = None
-        self._sort = None
+        self._sort: Optional[List[Dict[str, str]]] = None
         self._max_records = None
         self._page_size = None
         self._field_key = "name"
@@ -68,8 +71,6 @@ class QuerySet:
             new_qs._fields = fields
         if page_size:
             new_qs._page_size = page_size
-        if page_token:
-            new_qs._page_token = page_token
         if view_id:
             new_qs._view_id = view_id
         if max_records:
@@ -227,50 +228,55 @@ class QuerySet:
         获取所有记录（异步，自动处理分页）
         
         Args:
-            max_count: 最大记录数，默认为MAX_RECORDS_RETURNED_BY_ALL
+            max_count: 最大记录数（此参数在新逻辑中不再严格限制，主要用于兼容旧接口）
             
         Returns:
             记录列表
         """
-        if max_count is None:
-            max_count = MAX_RECORDS_RETURNED_BY_ALL
+        # 首次请求，获取第一页数据和总记录数
+        first_page_response = await self._datasheet.records._aget_records(
+            view_id=self._view_id,
+            fields=self._fields,
+            filter_by_formula=self._filter_formula,
+            page_size=self._page_size or MAX_RECORDS_PER_REQUEST,
+            pageNum=1,  # 强制从第一页开始
+            sort=self._sort,
+            field_key=self._field_key,
+            cell_format=self._cell_format
+        )
         
-        all_records = []
-        page_token = None
-        current_count = 0
+        data = first_page_response.get('data', {})
+        total = data.get('total', 0)
+        records_data = data.get('records', [])
         
-        while current_count < max_count:
-            remaining = max_count - current_count
-            page_size = min(remaining, self._page_size or MAX_RECORDS_PER_REQUEST)
+        if not records_data:
+            return []
             
-            response = await self._datasheet.records._aget_records(
-                view_id=self._view_id,
-                fields=self._fields,
-                filter_by_formula=self._filter_formula,
-                max_records=page_size,
-                page_token=page_token,
-                sort=self._sort,
-                field_key=self._field_key,
-                cell_format=self._cell_format
-            )
-            
-            records_data = response.get('data', {}).get('records', [])
-            if not records_data:
-                break
-            
-            # 转换为Record对象
-            for record_data in records_data:
-                all_records.append(Record(record_data, self._datasheet))
-                current_count += 1
+        all_records = [Record(record_data, self._datasheet) for record_data in records_data]
+        
+        page_size = self._page_size or MAX_RECORDS_PER_REQUEST
+        total_pages = math.ceil(total / page_size)
+        
+        if total_pages > 1:
+            for page_num in range(2, int(total_pages) + 1):
+                response = await self._datasheet.records._aget_records(
+                    view_id=self._view_id,
+                    fields=self._fields,
+                    filter_by_formula=self._filter_formula,
+                    page_size=page_size,
+                    pageNum=page_num,
+                    sort=self._sort,
+                    field_key=self._field_key,
+                    cell_format=self._cell_format
+                )
                 
-                if current_count >= max_count:
-                    break
-            
-            # 检查是否还有更多数据
-            page_token = response.get('data', {}).get('pageToken')
-            if not page_token:
-                break
-        
+                new_records_data = response.get('data', {}).get('records', [])
+                if new_records_data:
+                    all_records.extend([Record(record_data, self._datasheet) for record_data in new_records_data])
+                
+                # 保留速率限制
+                await asyncio.sleep(0.5)
+                
         return all_records
     
     async def afirst(self) -> Optional[Record]:
@@ -414,7 +420,7 @@ class QuerySet:
         return new_qs
     
     # 支持异步迭代器接口
-    async def __aiter__(self) -> Iterator[Record]:
+    async def __aiter__(self) -> AsyncIterator[Record]:
         """异步迭代器支持"""
         records = await self._aevaluate()
         for record in records:
