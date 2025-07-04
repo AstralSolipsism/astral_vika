@@ -32,7 +32,9 @@ class QuerySet:
         self._filter_formula = None
         self._sort: Optional[List[Dict[str, str]]] = None
         self._max_records = None
+        self._record_ids = None
         self._page_size = None
+        self._page_num = None
         self._field_key = "name"
         self._cell_format = "json"
         self._cached_records = None
@@ -79,7 +81,10 @@ class QuerySet:
         # 处理其他关键字参数
         for key, value in kwargs.items():
             if value is not None:
-                setattr(new_qs, f'_{key}', value)
+                if key == 'filter_by_formula':
+                    new_qs._filter_formula = value
+                else:
+                    setattr(new_qs, f'_{key}', value)
                 
         return new_qs
     
@@ -161,18 +166,18 @@ class QuerySet:
         new_qs._view_id = view_id
         return new_qs
     
-    def limit(self, count: int) -> 'QuerySet':
+    def limit(self, max_records: int) -> 'QuerySet':
         """
         限制返回记录数
         
         Args:
-            count: 最大记录数
+            max_records: 最大记录数
             
         Returns:
             新的QuerySet实例
         """
         new_qs = self._clone()
-        new_qs._max_records = min(count, MAX_RECORDS_PER_REQUEST)
+        new_qs._max_records = max_records
         return new_qs
     
     def page_size(self, size: int) -> 'QuerySet':
@@ -189,6 +194,34 @@ class QuerySet:
         new_qs._page_size = min(size, MAX_RECORDS_PER_REQUEST)
         return new_qs
     
+    def page_num(self, page_number: int) -> 'QuerySet':
+        """
+        设置页码
+        
+        Args:
+            page_number: 页码
+            
+        Returns:
+            新的QuerySet实例
+        """
+        new_qs = self._clone()
+        new_qs._page_num = page_number
+        return new_qs
+
+    def filter_by_ids(self, record_ids: List[str]) -> 'QuerySet':
+        """
+        按记录ID列表过滤记录
+        
+        Args:
+            record_ids: 记录ID列表
+            
+        Returns:
+            新的QuerySet实例
+        """
+        new_qs = self._clone()
+        new_qs._record_ids = record_ids
+        return new_qs
+
     def field_key(self, key: str) -> 'QuerySet':
         """
         设置字段键类型
@@ -395,7 +428,9 @@ class QuerySet:
             filter_by_formula=self._filter_formula,
             max_records=self._max_records,
             page_size=self._page_size,
+            page_num=self._page_num,
             sort=self._sort,
+            record_ids=self._record_ids,
             field_key=self._field_key,
             cell_format=self._cell_format
         )
@@ -414,7 +449,9 @@ class QuerySet:
         new_qs._filter_formula = self._filter_formula
         new_qs._sort = self._sort
         new_qs._max_records = self._max_records
+        new_qs._record_ids = self._record_ids
         new_qs._page_size = self._page_size
+        new_qs._page_num = self._page_num
         new_qs._field_key = self._field_key
         new_qs._cell_format = self._cell_format
         return new_qs

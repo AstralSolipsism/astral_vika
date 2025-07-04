@@ -304,6 +304,7 @@ class RecordManager:
         filter_by_formula: Optional[str] = None,
         max_records: Optional[int] = None,
         page_size: Optional[int] = None,
+        page_num: Optional[int] = None,
         page_token: Optional[str] = None,
         page_num: Optional[int] = None,
         sort: Optional[List[Dict[str, str]]] = None,

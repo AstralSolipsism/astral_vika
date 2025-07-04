@@ -4,7 +4,7 @@
 兼容原vika.py库的请求处理方式
 """
 import httpx
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Callable, Awaitable
 
 from .const import DEFAULT_API_BASE, FUSION_API_PREFIX
 from .exceptions import VikaException
@@ -16,9 +16,10 @@ class Session:
     一个原生异步的HTTP请求会话，使用httpx库。
     """
 
-    def __init__(self, token: str, api_base: str = DEFAULT_API_BASE):
+    def __init__(self, token: str, api_base: str = DEFAULT_API_BASE, status_callback: Optional[Callable[[str], Awaitable[None]]] = None):
         self.token = token
         self.api_base = api_base.rstrip('/')
+        self.status_callback = status_callback
         headers = {
             'Authorization': f'Bearer {self.token}',
             'Content-Type': 'application/json',
@@ -32,7 +33,10 @@ class Session:
             return endpoint
 
         if not endpoint.startswith('/fusion'):
-            endpoint = f"{FUSION_API_PREFIX}/{endpoint.lstrip('/')}"
+            endpoint = f"{FUSION_API_PREFIX.rstrip('/')}/{endpoint.lstrip('/')}"
+        else:
+            # 如果已经是完整的 /fusion/vX/ 路径，则直接使用
+            pass
 
         return build_api_url(self.api_base, endpoint)
 
@@ -59,6 +63,8 @@ class Session:
         #     request_headers.pop('Content-Type', None)
 
         try:
+            if self.status_callback:
+                await self.status_callback(f"正在向 {url} 发送 {method} 请求...")
             response = await self.client.request(
                 method=method.upper(),
                 url=url,
@@ -71,6 +77,9 @@ class Session:
 
             # raise_for_status 会在 4xx 或 5xx 响应时引发 HTTPStatusError
             response.raise_for_status()
+
+            if self.status_callback:
+                await self.status_callback(f"成功接收到来自 {url} 的响应。")
 
             try:
                 response_data = response.json()

@@ -3,7 +3,7 @@
 
 兼容原vika.py库的AttachmentManager类
 """
-from typing import Dict, Any, Optional, List, Union
+from typing import Dict, Any, Optional, List, Union, Callable, Awaitable
 import aiohttp
 import os
 from pathlib import Path
@@ -76,7 +76,7 @@ class AttachmentManager:
     兼容原vika.py库的AttachmentManager接口
     """
     
-    def __init__(self, datasheet):
+    def __init__(self, datasheet, status_callback: Optional[Callable[[str], Awaitable[None]]] = None):
         """
         初始化附件管理器
         
@@ -84,6 +84,7 @@ class AttachmentManager:
             datasheet: 数据表实例
         """
         self._datasheet = datasheet
+        self.status_callback = status_callback
     
     async def aupload(self, file_path: str) -> Attachment:
         """
@@ -106,7 +107,7 @@ class AttachmentManager:
         if file_size > 1024 * 1024 * 1024:  # 1GB limit
             raise AttachmentException("File size exceeds 1GB limit")
         
-        response = await self._aupload_file(file_path)
+        response = await self._aupload_file(file_path, status_callback=self.status_callback)
         
         if response.get('success'):
             attachment_data = response.get('data', {})
@@ -171,7 +172,7 @@ class AttachmentManager:
         
         # 下载文件
         try:
-            downloaded_path = await self._adownload_file(url, str(save_path))
+            downloaded_path = await self._adownload_file(url, str(save_path), status_callback=self.status_callback)
             return downloaded_path
         except Exception as e:
             raise AttachmentException(f"Failed to download attachment: {str(e)}")
@@ -190,17 +191,20 @@ class AttachmentManager:
         return await self.adownload(url, save_path)
     
     # 内部API调用方法
-    async def _aupload_file(self, file_path: str) -> Dict[str, Any]:
+    async def _aupload_file(self, file_path: str, status_callback: Optional[Callable[[str], Awaitable[None]]] = None) -> Dict[str, Any]:
         """上传文件的内部API调用"""
         endpoint = f"datasheets/{self._datasheet._dst_id}/attachments"
         
         # 准备文件数据
-        return await self._async_upload_file(endpoint, file_path)
+        return await self._async_upload_file(endpoint, file_path, status_callback=status_callback)
     
-    async def _async_upload_file(self, endpoint: str, file_path: str) -> Dict[str, Any]:
+    async def _async_upload_file(self, endpoint: str, file_path: str, status_callback: Optional[Callable[[str], Awaitable[None]]] = None) -> Dict[str, Any]:
         """异步上传文件"""
         file_path = Path(file_path)
         filename = file_path.name
+        
+        if status_callback:
+            await status_callback(f"正在上传文件: {filename}...")
         
         # 使用 apitable 实例的 api_base 构建 URL
         base_url = self._datasheet._apitable.api_base
@@ -240,16 +244,21 @@ class AttachmentManager:
                         from ..exceptions import create_exception_from_response
                         raise create_exception_from_response(response_data, response.status)
                     
+                    if status_callback:
+                        await status_callback(f"文件 {filename} 上传成功。")
                     return response_data
     
-    async def _adownload_file(self, url: str, save_path: str) -> str:
+    async def _adownload_file(self, url: str, save_path: str, status_callback: Optional[Callable[[str], Awaitable[None]]] = None) -> str:
         """下载文件的内部实现"""
-        return await self._async_download_file(url, save_path)
+        return await self._async_download_file(url, save_path, status_callback=status_callback)
     
-    async def _async_download_file(self, url: str, save_path: str) -> str:
+    async def _async_download_file(self, url: str, save_path: str, status_callback: Optional[Callable[[str], Awaitable[None]]] = None) -> str:
         """异步下载文件"""
         import aiohttp
         
+        if status_callback:
+            await status_callback(f"正在从 {url} 下载文件...")
+            
         async with aiohttp.ClientSession() as session:
             async with session.get(url) as response:
                 if response.status != 200:
@@ -266,6 +275,9 @@ class AttachmentManager:
                 with open(save_path, 'wb') as f:
                     f.write(content)
                 
+                if status_callback:
+                    await status_callback(f"文件已成功下载到: {save_path}")
+                    
                 return str(save_path)
     
     def __str__(self) -> str:

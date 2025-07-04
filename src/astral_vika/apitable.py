@@ -3,7 +3,7 @@
 
 兼容原vika.py库的主类Vika/Apitable
 """
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Callable, Awaitable
 from .const import DEFAULT_API_BASE
 from .request import Session
 from .space import SpaceManager
@@ -20,7 +20,7 @@ class Vika:
     兼容原vika.py库的Vika类接口
     """
     
-    def __init__(self, token: str, api_base: Optional[str] = None):
+    def __init__(self, token: str, api_base: Optional[str] = None, status_callback: Optional[Callable[[str], Awaitable[None]]] = None):
         """
         初始化维格表客户端
         
@@ -30,9 +30,10 @@ class Vika:
         """
         self._token = token
         self._api_base = api_base or DEFAULT_API_BASE
+        self.status_callback = status_callback
         
         # 创建HTTP会话
-        self.request_adapter = Session(token, self._api_base)
+        self.request_adapter = Session(token, self._api_base, status_callback=self.status_callback)
         
         # 初始化管理器
         self._space_manager = SpaceManager(self)
@@ -109,7 +110,7 @@ class Vika:
         dst_id_or_url: str,
         space_id: Optional[str] = None,
         field_key: str = "name",
-        field_key_map: Optional[Dict[str, str]] = None
+        field_key_map: Optional[Dict[str, str]] = None,
     ) -> Datasheet:
         """
         直接获取数据表实例（无需space_id）
@@ -130,7 +131,8 @@ class Vika:
             dst_id=dst_id,
             spc_id=space_id,
             field_key=field_key,
-            field_key_map=field_key_map
+            field_key_map=field_key_map,
+            status_callback=self.status_callback
         )
     
     async def aget_spaces(self) -> list:
