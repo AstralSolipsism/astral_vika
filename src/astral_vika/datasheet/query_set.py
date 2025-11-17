@@ -270,7 +270,7 @@ class QuerySet:
         first_page_response = await self._datasheet.records._aget_records(
             view_id=self._view_id,
             fields=self._fields,
-            filter_by_formula=self._filter_formula,
+            filterByFormula=self._filter_formula,
             page_size=self._page_size or MAX_RECORDS_PER_REQUEST,
             pageNum=1,  # 强制从第一页开始
             sort=self._sort,
@@ -295,7 +295,7 @@ class QuerySet:
                 response = await self._datasheet.records._aget_records(
                     view_id=self._view_id,
                     fields=self._fields,
-                    filter_by_formula=self._filter_formula,
+                    filterByFormula=self._filter_formula,
                     page_size=page_size,
                     pageNum=page_num,
                     sort=self._sort,
@@ -356,7 +356,7 @@ class QuerySet:
         response = await self._datasheet.records._aget_records(
             view_id=self._view_id,
             fields=["记录ID"] if self._fields is None else self._fields[:1],
-            filter_by_formula=self._filter_formula,
+            filterByFormula=self._filter_formula,
             max_records=1,
             sort=self._sort,
             field_key=self._field_key,
@@ -425,7 +425,7 @@ class QuerySet:
         response = await self._datasheet.records._aget_records(
             view_id=self._view_id,
             fields=self._fields,
-            filter_by_formula=self._filter_formula,
+            filterByFormula=self._filter_formula,
             max_records=self._max_records,
             page_size=self._page_size,
             page_num=self._page_num,

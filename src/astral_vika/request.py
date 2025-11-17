@@ -4,6 +4,8 @@
 兼容原vika.py库的请求处理方式
 """
 import httpx
+import urllib.parse
+import json
 from typing import Dict, Any, Optional, Callable, Awaitable
 
 from .const import DEFAULT_API_BASE, FUSION_API_PREFIX
@@ -45,7 +47,7 @@ class Session:
         method: str,
         endpoint: str,
         params: Optional[Dict[str, Any]] = None,
-        json: Optional[Dict[str, Any]] = None,
+        json_body: Optional[Dict[str, Any]] = None,
         data: Optional[Dict[str, Any]] = None,
         files: Optional[Dict] = None,
         headers: Optional[Dict[str, str]] = None
@@ -54,13 +56,9 @@ class Session:
         发送HTTP请求（异步）
         """
         url = self._build_url(endpoint)
-
-        # httpx 会自动处理文件上传的 Content-Type
-        # request_headers = self.headers.copy()
-        # if headers:
-        #     request_headers.update(headers)
-        # if files:
-        #     request_headers.pop('Content-Type', None)
+        
+        # 创建 params 的副本以避免修改原始字典，防止状态污染
+        final_params = params.copy() if params else {}
 
         try:
             if self.status_callback:
@@ -68,8 +66,8 @@ class Session:
             response = await self.client.request(
                 method=method.upper(),
                 url=url,
-                params=params,
-                json=json,
+                params=final_params,  # 使用副本
+                json=json_body,
                 data=data,
                 files=files,
                 headers=headers,  # 允许覆盖默认头
@@ -83,7 +81,7 @@ class Session:
 
             try:
                 response_data = response.json()
-            except httpx.JSONDecodeError:
+            except json.JSONDecodeError:
                 response_data = {
                     'message': f'Response parsing error: {response.text}',
                     'success': False
@@ -112,20 +110,20 @@ class Session:
     async def post(
         self,
         endpoint: str,
-        json: Optional[Dict[str, Any]] = None,
+        json_body: Optional[Dict[str, Any]] = None,
         data: Optional[Dict[str, Any]] = None,
         files: Optional[Dict] = None
     ) -> Dict[str, Any]:
-        return await self.request('POST', endpoint, json=json, data=data, files=files)
+        return await self.request('POST', endpoint, json_body=json_body, data=data, files=files)
 
-    async def patch(self, endpoint: str, json: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        return await self.request('PATCH', endpoint, json=json)
+    async def patch(self, endpoint: str, json_body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return await self.request('PATCH', endpoint, json_body=json_body)
 
-    async def put(self, endpoint: str, json: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        return await self.request('PUT', endpoint, json=json)
+    async def put(self, endpoint: str, json_body: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return await self.request('PUT', endpoint, json_body=json_body)
 
-    async def delete(self, endpoint: str, json: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        return await self.request('DELETE', endpoint, json=json)
+    async def delete(self, endpoint: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        return await self.request('DELETE', endpoint, params=params)
 
     async def close(self):
         """关闭客户端会话"""

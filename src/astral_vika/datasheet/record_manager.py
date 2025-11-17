@@ -301,12 +301,11 @@ class RecordManager:
         self,
         view_id: Optional[str] = None,
         fields: Optional[List[str]] = None,
-        filter_by_formula: Optional[str] = None,
+        filterByFormula: Optional[str] = None,
         max_records: Optional[int] = None,
         page_size: Optional[int] = None,
         page_num: Optional[int] = None,
         page_token: Optional[str] = None,
-        page_num: Optional[int] = None,
         sort: Optional[List[Dict[str, str]]] = None,
         record_ids: Optional[List[str]] = None,
         field_key: Optional[str] = None,
@@ -319,7 +318,7 @@ class RecordManager:
         params = {
             "viewId": view_id,
             "fields": fields,
-            "filterByFormula": filter_by_formula,
+            "filterByFormula": filterByFormula,
             "maxRecords": max_records,
             "pageSize": page_size,
             "pageToken": page_token,
@@ -344,7 +343,7 @@ class RecordManager:
             "fieldKey": self._datasheet._field_key
         }
         
-        return await self._datasheet._apitable.request_adapter.post(endpoint, json=data)
+        return await self._datasheet._apitable.request_adapter.post(endpoint, json_body=data)
     
     async def _aupdate_records(self, records: List[Dict[str, Any]]) -> Dict[str, Any]:
         """更新记录的内部API调用"""
@@ -355,15 +354,16 @@ class RecordManager:
             "fieldKey": self._datasheet._field_key
         }
         
-        return await self._datasheet._apitable.request_adapter.patch(endpoint, json=data)
+        return await self._datasheet._apitable.request_adapter.patch(endpoint, json_body=data)
     
     async def _adelete_records(self, record_ids: List[str]) -> Dict[str, Any]:
         """删除记录的内部API调用"""
         endpoint = f"datasheets/{self._datasheet._dst_id}/records"
         
-        data = {"recordIds": record_ids}
+        # 根据维格表API文档，recordIds 必须是逗号分隔的字符串，并通过查询参数传递
+        params = {"recordIds": ",".join(record_ids)}
         
-        return await self._datasheet._apitable.request_adapter.delete(endpoint, json=data)
+        return await self._datasheet._apitable.request_adapter.delete(endpoint, params=params)
     
     def __str__(self) -> str:
         return f"RecordManager({self._datasheet})"
