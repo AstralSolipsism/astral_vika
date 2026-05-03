@@ -1,0 +1,6 @@
+astral_vika
+aiohttp
+fastapi
+uvicorn
+pydantic>=1.10
+PyYAML
