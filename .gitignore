@@ -51,6 +51,16 @@ coverage.xml
 .pytest_cache/
 cover/
 
+# Local reference and generated audit artifacts
+agent-skills-reference/
+audit-report*.json
+test-cache.sqlite3*
+
+# Local MCP config and IDE state
+vika_mcp.yaml
+vika_mcp*.local.yaml
+.vs/
+
 # Translations
 *.mo
 *.pot
