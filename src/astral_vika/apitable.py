@@ -11,6 +11,7 @@ from .datasheet import Datasheet
 from .node import NodeManager  
 from .utils import get_dst_id, get_space_id
 from .exceptions import ParameterException
+import asyncio
 
 
 class Vika:
@@ -41,6 +42,8 @@ class Vika:
         
         # 缓存
         self._spaces_cache = None
+        # 关闭状态
+        self._closed = False
     
     @property
     def api_base(self) -> str:
@@ -166,16 +169,30 @@ class Vika:
         """
         return await self.aauth()
     
+    # 避免误导：之前为空实现，改为释放资源并幂等
     async def aclose(self):
         """关闭客户端连接（异步）"""
-        pass
+        if getattr(self, "_closed", False):
+            return
+        # 关闭底层HTTP会话（Session.client）
+        if hasattr(self, "request_adapter") and self.request_adapter is not None:
+            await self.request_adapter.close()
+        self._closed = True
     
     # 同步上下文管理器支持
     def __enter__(self):
         return self
     
+    # 避免误导：之前为空实现，改为同步关闭并遵循事件循环约束
     def __exit__(self, exc_type, exc_val, exc_tb):
-        pass
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # 无事件循环在运行，安全地同步关闭
+            asyncio.run(self.aclose())
+        else:
+            # 已在事件循环中，避免在同步上下文内强行关闭
+            raise RuntimeError("Apitable.__exit__ 检测到活动事件循环；请使用 'async with Vika(...)' 或显式 await vika.aclose() 以正确关闭资源")
 
     # 异步上下文管理器支持
     async def __aenter__(self):
@@ -191,7 +208,7 @@ class Vika:
         return f"Vika(token='***', api_base='{self._api_base}')"
 
 
-# 为了与原库完全兼容，创建别名
+# 常见 vika.py 使用习惯兼容别名
 Apitable = Vika
 
 

@@ -3,10 +3,13 @@
 
 兼容原vika.py库的DatasheetManager类
 """
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from .datasheet import Datasheet
 from ..utils import get_dst_id
-from ..exceptions import ParameterException
+from ..exceptions import ParameterException, NotFoundException
+
+if TYPE_CHECKING:
+    from ..space.space import Space
 
 
 class DatasheetManager:
@@ -16,7 +19,7 @@ class DatasheetManager:
     兼容原vika.py库的DatasheetManager接口
     """
     
-    def __init__(self, space):
+    def __init__(self, space: "Space"):
         """
         初始化数据表管理器
         
@@ -96,25 +99,9 @@ class DatasheetManager:
             datasheet = self.get(dst_id)
             await datasheet.aget_fields()
             return True
-        except Exception:
+        except (NotFoundException, ParameterException):
+            # 仅在对象不存在或参数问题时返回 False；其他异常向上抛出
             return False
-    
-    def delete(self, dst_id_or_url: str) -> bool:
-        """
-        删除数据表
-        
-        Args:
-            dst_id_or_url: 数据表ID或URL
-            
-        Returns:
-            是否删除成功
-        """
-        # 注意：维格表API可能不支持直接删除数据表
-        # 这个方法主要是为了接口兼容性
-        raise NotImplementedError(
-            "Datasheet deletion is not supported by Vika API. "
-            "Please delete the datasheet through the web interface."
-        )
     
     async def alist(self) -> List[Dict[str, Any]]:
         """
@@ -123,20 +110,19 @@ class DatasheetManager:
         Returns:
             数据表列表
         """
-        # 通过节点管理器获取数据表节点
-        nodes_response = await self._space.nodes._aget_nodes()
-        nodes_data = nodes_response.get('data', {}).get('nodes', [])
+        # 使用节点搜索获取所有数据表，避免只读取顶层节点时漏掉文件夹内的数据表。
+        nodes = await self._space.nodes.aget_datasheets()
         
         datasheets = []
-        for node in nodes_data:
-            if node.get('type') == 'Datasheet':
-                datasheets.append({
-                    'id': node.get('id'),
-                    'name': node.get('name'),
-                    'type': node.get('type'),
-                    'icon': node.get('icon'),
-                    'parentId': node.get('parentId')
-                })
+        for node in nodes:
+            raw_data = node.raw_data
+            datasheets.append({
+                'id': raw_data.get('id'),
+                'name': raw_data.get('name'),
+                'type': raw_data.get('type'),
+                'icon': raw_data.get('icon'),
+                'parentId': raw_data.get('parentId')
+            })
         
         return datasheets
     
@@ -151,10 +137,12 @@ class DatasheetManager:
             数据表基本信息
         """
         datasheet = self.get(dst_id_or_url)
-        meta = await datasheet.aget_meta()
-        
-        fields = await datasheet.aget_fields()
-        views = await datasheet.aget_views()
+        # 独立请求并发 gather 降低总RTT
+        import asyncio
+        meta_task = asyncio.create_task(datasheet.aget_meta())
+        fields_task = asyncio.create_task(datasheet.aget_fields())
+        views_task = asyncio.create_task(datasheet.aget_views())
+        meta, fields, views = await asyncio.gather(meta_task, fields_task, views_task)
         
         return {
             'id': datasheet.dst_id,
@@ -183,7 +171,7 @@ class DatasheetManager:
         if pre_filled_records:
             data["preFilledRecords"] = pre_filled_records
         
-        return await self._space._apitable.request_adapter.post(endpoint, json=data)
+        return await self._space._apitable.request_adapter.post(endpoint, json_body=data)
     
     def __call__(
         self,

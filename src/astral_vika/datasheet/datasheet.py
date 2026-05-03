@@ -6,7 +6,7 @@
 from typing import Dict, Any, Optional, List, Callable, Awaitable
 from .record_manager import RecordManager
 from .field_manager import FieldManager, Field
-from .view_manager import ViewManager
+from .view_manager import ViewManager, View
 from .attachment_manager import AttachmentManager
 from ..utils import get_dst_id, timed_lru_cache
 from ..exceptions import ParameterException
@@ -138,7 +138,7 @@ class Datasheet:
         """
         return await self.fields.aget(field_name_or_id)
     
-    async def aget_views(self) -> List:
+    async def aget_views(self) -> List[View]:
         """
         获取视图列表（异步）
         
@@ -147,7 +147,7 @@ class Datasheet:
         """
         return await self.views.aall()
     
-    async def aget_view(self, view_name_or_id: str):
+    async def aget_view(self, view_name_or_id: str) -> View:
         """
         获取指定视图（异步）
         

@@ -5,7 +5,8 @@
 """
 from typing import Dict, Any, Optional, List
 from ..types.unit_model import UnitMemberCreateRo, UnitMemberUpdateRo
-from ..exceptions import ParameterException
+from ..exceptions import ParameterException, NotFoundException
+from ..utils import handle_response
 
 
 class Member:
@@ -24,9 +25,9 @@ class Member:
         """
         self._space = space
     
-    def get(self, unit_id: str) -> Dict[str, Any]:
+    async def aget(self, unit_id: str) -> Dict[str, Any]:
         """
-        获取成员信息
+        获取成员信息（异步）
         
         Args:
             unit_id: 成员单元ID
@@ -34,23 +35,22 @@ class Member:
         Returns:
             成员信息
         """
-        response = self._get_member(unit_id)
+        response = await self._aget_member(unit_id)
         return response.get('data', {})
     
-    def list(self) -> List[Dict[str, Any]]:
+    async def alist(self) -> List[Dict[str, Any]]:
         """
-        获取成员列表
+        获取成员列表（异步）
         
         Returns:
             成员列表
         """
-        # 注意：原API可能没有直接的成员列表接口
-        # 这里返回空列表，实际使用时需要根据具体API调整
-        return []
+        response = await self._alist_members()
+        return response.get('data', {}).get('members', [])
     
-    def create(self, member_data: UnitMemberCreateRo) -> Dict[str, Any]:
+    async def acreate(self, member_data: UnitMemberCreateRo) -> Dict[str, Any]:
         """
-        创建成员
+        创建成员（异步）
         
         Args:
             member_data: 成员创建数据
@@ -58,12 +58,12 @@ class Member:
         Returns:
             创建结果
         """
-        response = self._create_member(member_data.dict())
+        response = await self._acreate_member(member_data.model_dump(exclude_none=True))
         return response.get('data', {})
     
-    def update(self, unit_id: str, member_data: UnitMemberUpdateRo) -> Dict[str, Any]:
+    async def aupdate(self, unit_id: str, member_data: UnitMemberUpdateRo) -> Dict[str, Any]:
         """
-        更新成员信息
+        更新成员信息（异步）
         
         Args:
             unit_id: 成员单元ID
@@ -72,12 +72,12 @@ class Member:
         Returns:
             更新结果
         """
-        response = self._update_member(unit_id, member_data.dict())
+        response = await self._aupdate_member(unit_id, member_data.model_dump(exclude_none=True))
         return response.get('data', {})
     
-    def delete(self, unit_id: str) -> bool:
+    async def adelete(self, unit_id: str) -> bool:
         """
-        删除成员
+        删除成员（异步）
         
         Args:
             unit_id: 成员单元ID
@@ -85,12 +85,14 @@ class Member:
         Returns:
             是否删除成功
         """
-        self._delete_member(unit_id)
+        # 依赖统一异常处理：非2xx或success=False将抛异常，避免错误返回True
+        resp = await self._adelete_member(unit_id)
+        handle_response(resp)
         return True
     
-    def activate(self, unit_id: str) -> Dict[str, Any]:
+    async def aactivate(self, unit_id: str) -> Dict[str, Any]:
         """
-        激活成员
+        激活成员（异步）
         
         Args:
             unit_id: 成员单元ID
@@ -99,11 +101,11 @@ class Member:
             更新结果
         """
         update_data = UnitMemberUpdateRo(isActive=True)
-        return self.update(unit_id, update_data)
+        return await self.aupdate(unit_id, update_data)
     
-    def deactivate(self, unit_id: str) -> Dict[str, Any]:
+    async def adeactivate(self, unit_id: str) -> Dict[str, Any]:
         """
-        停用成员
+        停用成员（异步）
         
         Args:
             unit_id: 成员单元ID
@@ -112,11 +114,11 @@ class Member:
             更新结果
         """
         update_data = UnitMemberUpdateRo(isActive=False)
-        return self.update(unit_id, update_data)
+        return await self.aupdate(unit_id, update_data)
     
-    def exists(self, unit_id: str) -> bool:
+    async def aexists(self, unit_id: str) -> bool:
         """
-        检查成员是否存在
+        检查成员是否存在（异步）
         
         Args:
             unit_id: 成员单元ID
@@ -125,31 +127,37 @@ class Member:
             成员是否存在
         """
         try:
-            self.get(unit_id)
+            await self.aget(unit_id)
             return True
-        except Exception:
+        # 收窄异常：仅将未找到/参数问题视为不存在
+        except (NotFoundException, ParameterException):
             return False
     
     # 内部API调用方法
-    def _get_member(self, unit_id: str) -> Dict[str, Any]:
-        """获取成员的内部API调用"""
+    async def _aget_member(self, unit_id: str) -> Dict[str, Any]:
+        """获取成员的内部API调用（异步）"""
         endpoint = f"spaces/{self._space._space_id}/members/{unit_id}"
-        return self._space._apitable._session.get(endpoint)
+        return await self._space._apitable.request_adapter.get(endpoint)
     
-    def _create_member(self, member_data: Dict[str, Any]) -> Dict[str, Any]:
-        """创建成员的内部API调用"""
+    async def _acreate_member(self, member_data: Dict[str, Any]) -> Dict[str, Any]:
+        """创建成员的内部API调用（异步）"""
         endpoint = f"spaces/{self._space._space_id}/members"
-        return self._space._apitable._session.post(endpoint, json=member_data)
+        return await self._space._apitable.request_adapter.post(endpoint, json_body=member_data)
     
-    def _update_member(self, unit_id: str, member_data: Dict[str, Any]) -> Dict[str, Any]:
-        """更新成员的内部API调用"""
+    async def _aupdate_member(self, unit_id: str, member_data: Dict[str, Any]) -> Dict[str, Any]:
+        """更新成员的内部API调用（异步）"""
         endpoint = f"spaces/{self._space._space_id}/members/{unit_id}"
-        return self._space._apitable._session.put(endpoint, json=member_data)
+        return await self._space._apitable.request_adapter.put(endpoint, json_body=member_data)
     
-    def _delete_member(self, unit_id: str) -> Dict[str, Any]:
-        """删除成员的内部API调用"""
+    async def _alist_members(self) -> Dict[str, Any]:
+        """获取成员列表的内部API调用（异步）"""
+        endpoint = f"spaces/{self._space._space_id}/members"
+        return await self._space._apitable.request_adapter.get(endpoint)
+    
+    async def _adelete_member(self, unit_id: str) -> Dict[str, Any]:
+        """删除成员的内部API调用（异步）"""
         endpoint = f"spaces/{self._space._space_id}/members/{unit_id}"
-        return self._space._apitable._session.delete(endpoint)
+        return await self._space._apitable.request_adapter.delete(endpoint)
     
     def __str__(self) -> str:
         return f"Member({self._space})"

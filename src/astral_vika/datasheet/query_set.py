@@ -6,10 +6,59 @@
 import asyncio
 import math
 import logging
+import re
 from typing import List, Dict, Any, Optional, Union, AsyncIterator
 from .record import Record
 from ..const import MAX_RECORDS_PER_REQUEST, MAX_RECORDS_RETURNED_BY_ALL
-from ..exceptions import ParameterException
+from ..exceptions import ParameterException, RateLimitException
+
+# 可通过配置/元数据覆写
+DEFAULT_CREATED_FIELD_NAME = '创建时间'
+
+# 自适应限流/参数化 sleep
+_DEFAULT_PAGE_DELAY_SECONDS = 0.0
+_BACKOFF_INITIAL_SECONDS = 0.5
+_BACKOFF_MAX_SECONDS = 8.0
+
+# 内部工具：字段名校验与安全转义，避免公式注入
+_SAFE_FIELD_RE = re.compile(r"^[A-Za-z0-9_ \u4e00-\u9fa5\-\.]+$")
+
+
+def _validate_field_name(name: str) -> str:
+    """校验字段名字符集并用花括号包裹，不合法抛参数异常"""
+    if not isinstance(name, str) or not name:
+        raise ParameterException("Invalid field name in formula")
+    if not _SAFE_FIELD_RE.match(name):
+        raise ParameterException("Field name contains illegal characters")
+    return f"{{{name}}}"
+
+
+def _escape_string_value(val: str) -> str:
+    """将字符串值用单引号包裹，并对内部单引号做双写转义"""
+    # 替换单引号为双写
+    escaped = val.replace("'", "''")
+    return f"'{escaped}'"
+
+
+def _build_safe_eq_formula(conditions: Dict[str, Any]) -> str:
+    """
+    基于等值匹配构造安全公式，仅支持简单 AND 组合：
+    {FieldA} = 'value' AND {FieldB} = 123
+    """
+    parts: List[str] = []
+    for field, value in conditions.items():
+        lhs = _validate_field_name(field)
+        if isinstance(value, str):
+            rhs = _escape_string_value(value)
+        elif isinstance(value, (int, float)):
+            rhs = str(value)
+        elif isinstance(value, bool):
+            rhs = "TRUE()" if value else "FALSE()"
+        else:
+            # 不支持的类型，宁可报错
+            raise ParameterException(f"Unsupported value type for formula: {type(value).__name__}")
+        parts.append(f"{lhs} = {rhs}")
+    return " AND ".join(parts)
 
 
 class QuerySet:
@@ -35,7 +84,8 @@ class QuerySet:
         self._record_ids = None
         self._page_size = None
         self._page_num = None
-        self._field_key = "name"
+        self._page_token = None
+        self._field_key = getattr(datasheet, "_field_key", "name")
         self._cell_format = "json"
         self._cached_records = None
         self._is_evaluated = False
@@ -73,6 +123,8 @@ class QuerySet:
             new_qs._fields = fields
         if page_size:
             new_qs._page_size = page_size
+        if page_token:
+            new_qs._page_token = page_token
         if view_id:
             new_qs._view_id = view_id
         if max_records:
@@ -261,22 +313,39 @@ class QuerySet:
         获取所有记录（异步，自动处理分页）
         
         Args:
-            max_count: 最大记录数（此参数在新逻辑中不再严格限制，主要用于兼容旧接口）
+            max_count: 最大记录数
             
         Returns:
             记录列表
         """
+        limits = [limit for limit in (self._max_records, max_count) if limit is not None]
+        effective_limit = min(limits) if limits else None
+        if effective_limit is not None and effective_limit <= 0:
+            return []
+
         # 首次请求，获取第一页数据和总记录数
-        first_page_response = await self._datasheet.records._aget_records(
-            view_id=self._view_id,
-            fields=self._fields,
-            filterByFormula=self._filter_formula,
-            page_size=self._page_size or MAX_RECORDS_PER_REQUEST,
-            pageNum=1,  # 强制从第一页开始
-            sort=self._sort,
-            field_key=self._field_key,
-            cell_format=self._cell_format
-        )
+        page_size = self._page_size or MAX_RECORDS_PER_REQUEST
+        if effective_limit is not None:
+            page_size = min(page_size, effective_limit)
+        backoff_delay = 0.0  # 自适应限流/参数化 sleep：遇到限流时指数退避，成功后重置
+        while True:
+            try:
+                first_page_response = await self._datasheet.records._aget_records(
+                    view_id=self._view_id,
+                    fields=self._fields,
+                    filterByFormula=self._filter_formula,
+                    max_records=effective_limit,
+                    page_size=page_size,
+                    page_num=1,  # 强制从第一页开始
+                    page_token=self._page_token,
+                    sort=self._sort,
+                    field_key=self._field_key,
+                    cell_format=self._cell_format
+                )
+                break
+            except RateLimitException:
+                backoff_delay = _BACKOFF_INITIAL_SECONDS if backoff_delay == 0.0 else min(_BACKOFF_MAX_SECONDS, backoff_delay * 2)
+                await asyncio.sleep(backoff_delay)
         
         data = first_page_response.get('data', {})
         total = data.get('total', 0)
@@ -286,29 +355,50 @@ class QuerySet:
             return []
             
         all_records = [Record(record_data, self._datasheet) for record_data in records_data]
+        if effective_limit is not None:
+            all_records = all_records[:effective_limit]
+            if len(all_records) >= effective_limit:
+                return all_records
         
-        page_size = self._page_size or MAX_RECORDS_PER_REQUEST
         total_pages = math.ceil(total / page_size)
         
         if total_pages > 1:
+            # 独立请求并发 gather 降低总RTT —— 不适用此处；逐页拉取以保持顺序与内存可控
             for page_num in range(2, int(total_pages) + 1):
-                response = await self._datasheet.records._aget_records(
-                    view_id=self._view_id,
-                    fields=self._fields,
-                    filterByFormula=self._filter_formula,
-                    page_size=page_size,
-                    pageNum=page_num,
-                    sort=self._sort,
-                    field_key=self._field_key,
-                    cell_format=self._cell_format
-                )
+                # 自适应限流/参数化 sleep：仅在限流时退避；否则按参数化的极小延迟
+                while True:
+                    try:
+                        next_page_size = page_size
+                        if effective_limit is not None:
+                            next_page_size = min(next_page_size, effective_limit - len(all_records))
+                            if next_page_size <= 0:
+                                return all_records
+                        response = await self._datasheet.records._aget_records(
+                            view_id=self._view_id,
+                            fields=self._fields,
+                            filterByFormula=self._filter_formula,
+                            page_size=next_page_size,
+                            page_num=page_num,
+                            sort=self._sort,
+                            field_key=self._field_key,
+                            cell_format=self._cell_format
+                        )
+                        # 成功后重置退避
+                        backoff_delay = 0.0
+                        break
+                    except RateLimitException:
+                        backoff_delay = _BACKOFF_INITIAL_SECONDS if backoff_delay == 0.0 else min(_BACKOFF_MAX_SECONDS, backoff_delay * 2)
+                        await asyncio.sleep(backoff_delay)
                 
                 new_records_data = response.get('data', {}).get('records', [])
                 if new_records_data:
                     all_records.extend([Record(record_data, self._datasheet) for record_data in new_records_data])
+                    if effective_limit is not None and len(all_records) >= effective_limit:
+                        return all_records[:effective_limit]
                 
-                # 保留速率限制
-                await asyncio.sleep(0.5)
+                # 参数化的可调延迟，默认极小（0）
+                if _DEFAULT_PAGE_DELAY_SECONDS > 0:
+                    await asyncio.sleep(_DEFAULT_PAGE_DELAY_SECONDS)
                 
         return all_records
     
@@ -340,7 +430,7 @@ class QuerySet:
             reversed_qs._sort = new_sort
         else:
             # 默认按创建时间降序
-            reversed_qs._sort = [{"field": "创建时间", "order": "desc"}]
+            reversed_qs._sort = [{"field": DEFAULT_CREATED_FIELD_NAME, "order": "desc"}]
         
         records = await reversed_qs.limit(1)._aevaluate()
         return records[0] if records else None
@@ -353,9 +443,10 @@ class QuerySet:
             记录总数
         """
         # 获取第一页数据来获取总数信息
+        # 使用空字段列表来减少数据传输，只获取total信息
         response = await self._datasheet.records._aget_records(
             view_id=self._view_id,
-            fields=["记录ID"] if self._fields is None else self._fields[:1],
+            fields=self._fields[:1] if self._fields else None,
             filterByFormula=self._filter_formula,
             max_records=1,
             sort=self._sort,
@@ -395,15 +486,8 @@ class QuerySet:
             ParameterException: 没有找到记录或找到多条记录
         """
         if kwargs:
-            # 构建过滤公式
-            conditions = []
-            for field, value in kwargs.items():
-                if isinstance(value, str):
-                    conditions.append(f'{{field}} = "{value}"')
-                else:
-                    conditions.append(f'{{field}} = {value}')
-            
-            formula = " AND ".join(conditions)
+            # 使用安全构造器构建过滤公式，避免公式注入
+            formula = _build_safe_eq_formula(kwargs)
             queryset = self.filter(formula)
         else:
             queryset = self
@@ -429,6 +513,7 @@ class QuerySet:
             max_records=self._max_records,
             page_size=self._page_size,
             page_num=self._page_num,
+            page_token=self._page_token,
             sort=self._sort,
             record_ids=self._record_ids,
             field_key=self._field_key,
@@ -452,8 +537,12 @@ class QuerySet:
         new_qs._record_ids = self._record_ids
         new_qs._page_size = self._page_size
         new_qs._page_num = self._page_num
+        new_qs._page_token = self._page_token
         new_qs._field_key = self._field_key
         new_qs._cell_format = self._cell_format
+        # 复制评估/缓存状态保持一致
+        new_qs._is_evaluated = self._is_evaluated
+        new_qs._cached_records = list(self._cached_records) if self._cached_records is not None else None
         return new_qs
     
     # 支持异步迭代器接口

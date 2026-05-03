@@ -8,6 +8,8 @@
 DEFAULT_API_BASE = "https://vika.cn"
 API_VERSION = "v1"
 FUSION_API_PREFIX = f"/fusion/{API_VERSION}"
+API_VERSION_V2 = "v2"
+NODES_API_V2_PREFIX = f"/fusion/{API_VERSION_V2}"  # 集中常量：v2 API 前缀
 
 # 请求限制
 MAX_RECORDS_PER_REQUEST = 1000

@@ -101,7 +101,7 @@ class RecordNotFoundException(NotFoundException):
     pass
 
 
-# 为了与原库完全兼容，创建别名
+# 常见 vika.py 使用习惯兼容别名
 class APIException(ApiException):
     """API异常别名"""
     pass

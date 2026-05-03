@@ -34,7 +34,7 @@ class Field:
     @property
     def properties(self) -> Dict[str, Any]:
         """字段属性"""
-        return self._data.get('property', {})
+        return self._data.get('properties', self._data.get('property', {}))
     
     @property
     def editable(self) -> bool:
@@ -131,40 +131,50 @@ class FieldManager:
         """
         return await self.aget(field_id)
     
-    async def aget_primary_field(self) -> Optional[Field]:
+    async def aget_primary_field(self, fields: Optional[List[Field]] = None) -> Optional[Field]:
         """
         获取主字段（异步）
+        
+        Args:
+            fields: 可选的字段列表，如果提供则直接使用，否则调用 aall() 获取
         
         Returns:
             主字段实例或None
         """
-        fields = await self.aall()
+        if fields is None:
+            fields = await self.aall()
         for field in fields:
             if field.is_primary:
                 return field
         return None
     
-    async def afilter_by_type(self, field_type: str) -> List[Field]:
+    async def afilter_by_type(self, field_type: str, fields: Optional[List[Field]] = None) -> List[Field]:
         """
         根据字段类型过滤字段（异步）
         
         Args:
             field_type: 字段类型
+            fields: 可选的字段列表，如果提供则直接使用，否则调用 aall() 获取
             
         Returns:
             匹配的字段列表
         """
-        fields = await self.aall()
+        if fields is None:
+            fields = await self.aall()
         return [field for field in fields if field.type == field_type]
     
-    async def aget_editable_fields(self) -> List[Field]:
+    async def aget_editable_fields(self, fields: Optional[List[Field]] = None) -> List[Field]:
         """
         获取可编辑字段（异步）
+        
+        Args:
+            fields: 可选的字段列表，如果提供则直接使用，否则调用 aall() 获取
         
         Returns:
             可编辑字段列表
         """
-        fields = await self.aall()
+        if fields is None:
+            fields = await self.aall()
         return [field for field in fields if field.editable]
     
     async def aexists(self, field_name_or_id: str) -> bool:
@@ -210,7 +220,8 @@ class FieldManager:
         
         return CreateFieldResponseData(**response.get('data', {}))
 
-    async def adelete(self, field_name_or_id: str) -> Dict[str, Any]:
+    # 返回语义与全库删除接口对齐：使用 bool
+    async def adelete(self, field_name_or_id: str) -> bool:
         """
         删除字段（异步）
 
@@ -218,57 +229,73 @@ class FieldManager:
             field_name_or_id: 字段名或字段ID
 
         Returns:
-            API响应字典
+            是否删除成功
         """
         if not self._datasheet._spc_id:
             raise ParameterException("Space ID is required for field deletion")
 
         field = await self.aget(field_name_or_id)
-        response = await self._adelete_field(field.id)
+        await self._adelete_field(field.id)
 
         # 清除缓存以获取最新字段列表
         self.aall.cache_clear()  # type: ignore
         
         return True
     
-    async def aget_field_names(self) -> List[str]:
+    async def aget_field_names(self, fields: Optional[List[Field]] = None) -> List[str]:
         """
         获取所有字段名（异步）
+        
+        Args:
+            fields: 可选的字段列表，如果提供则直接使用，否则调用 aall() 获取
         
         Returns:
             字段名列表
         """
-        fields = await self.aall()
+        if fields is None:
+            fields = await self.aall()
         return [field.name for field in fields]
     
-    async def aget_field_ids(self) -> List[str]:
+    async def aget_field_ids(self, fields: Optional[List[Field]] = None) -> List[str]:
         """
         获取所有字段ID（异步）
+        
+        Args:
+            fields: 可选的字段列表，如果提供则直接使用，否则调用 aall() 获取
         
         Returns:
             字段ID列表
         """
-        fields = await self.aall()
+        if fields is None:
+            fields = await self.aall()
         return [field.id for field in fields]
     
-    async def aget_field_mapping(self) -> Dict[str, str]:
+    async def aget_field_mapping(self, fields: Optional[List[Field]] = None) -> Dict[str, str]:
         """
         获取字段名到字段ID的映射（异步）
+        
+        Args:
+            fields: 可选的字段列表，如果提供则直接使用，否则调用 aall() 获取
         
         Returns:
             字段名到字段ID的映射字典
         """
-        fields = await self.aall()
+        if fields is None:
+            fields = await self.aall()
         return {field.name: field.id for field in fields}
     
-    async def aget_id_mapping(self) -> Dict[str, str]:
+    async def aget_id_mapping(self, fields: Optional[List[Field]] = None) -> Dict[str, str]:
         """
         获取字段ID到字段名的映射（异步）
+        
+        Args:
+            fields: 可选的字段列表，如果提供则直接使用，否则调用 aall() 获取
         
         Returns:
             字段ID到字段名的映射字典
         """
-        fields = await self.aall()
+        if fields is None:
+            fields = await self.aall()
         return {field.id: field.name for field in fields}
     
     # 内部API调用方法
@@ -293,7 +320,7 @@ class FieldManager:
         if property:
             data["property"] = property.model_dump(exclude_none=True)
         
-        return await self._datasheet._apitable.request_adapter.post(endpoint, json=data)
+        return await self._datasheet._apitable.request_adapter.post(endpoint, json_body=data)
     
     async def _adelete_field(self, field_id: str) -> Dict[str, Any]:
         """删除字段的内部API调用"""

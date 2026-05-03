@@ -6,7 +6,11 @@
 from typing import Dict, Any, Optional, List
 from .space import Space
 from ..utils import get_space_id
-from ..exceptions import ParameterException
+from ..exceptions import ParameterException, NotFoundException
+import time
+
+# 短期缓存TTL（秒）
+_SPACES_CACHE_TTL_SECONDS = 30
 
 
 class SpaceManager:
@@ -24,6 +28,9 @@ class SpaceManager:
             apitable: Apitable实例
         """
         self._apitable = apitable
+        # 空间列表短期缓存
+        self._spaces_cache: Optional[List[Dict[str, Any]]] = None
+        self._spaces_cache_ts: float = 0.0
     
     def get(self, space_id: str) -> Space:
         """
@@ -48,7 +55,15 @@ class SpaceManager:
         import warnings
         warnings.warn("The 'list' method is deprecated, use 'alist' instead.", DeprecationWarning)
         import asyncio
-        return asyncio.run(self.alist())
+        # 在已有事件循环中禁止调用同步 list，指引使用异步接口
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            # 无事件循环在运行，可使用一次性的 asyncio.run
+            return asyncio.run(self.alist())
+        else:
+            # 正在事件循环中，拒绝同步调用
+            raise RuntimeError("SpaceManager.list() cannot be called within a running event loop; use 'await alist()' instead.")
 
     async def alist(self) -> List[Dict[str, Any]]:
         """
@@ -57,8 +72,14 @@ class SpaceManager:
         Returns:
             空间列表
         """
+        # 下推条件/短期缓存以降低全量请求：若无法确认后端支持过滤，这里使用实例级TTL缓存
+        now = time.monotonic()
+        if self._spaces_cache is not None and (now - self._spaces_cache_ts) < _SPACES_CACHE_TTL_SECONDS:
+            return self._spaces_cache
         response = await self._aget_spaces()
         spaces_data = response.get('data', {}).get('spaces', [])
+        self._spaces_cache = spaces_data
+        self._spaces_cache_ts = now
         return spaces_data
     
     async def aexists(self, space_id: str) -> bool:
@@ -78,7 +99,8 @@ class SpaceManager:
                 if space.get('id') == space_id:
                     return True
             return False
-        except Exception:
+        # 收窄异常：仅将未找到/参数问题视为不存在
+        except (ParameterException, NotFoundException):
             return False
     
     async def afind_by_name(self, space_name: str) -> Optional[Dict[str, Any]]:

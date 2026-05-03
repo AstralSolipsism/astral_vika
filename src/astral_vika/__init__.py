@@ -1,21 +1,12 @@
 """
-Astrbot专用维格表(Vika)工具库
+Astral Vika 异步优先 Vika Fusion API SDK。
 
-完全兼容原vika.py库的API接口，解决版本依赖冲突问题。
-
-一个完整的Python客户端库，支持维格表API的所有功能，包括：
-- 记录管理 (CRUD)
-- 字段和视图管理  
-- 表格和空间站管理
-- 附件上传
-- 文件节点管理
-- 成员、小组和角色管理
-- AI功能
-- 嵌入链接管理
+主包提供空间站、数据表、记录、字段、视图、附件、节点和组织单元的
+异步 API 封装，并保留常见 vika.py 使用习惯的兼容入口。
 
 作者: AstralSolipsism
-版本: 0.9.0
-兼容: Python 3.10+，与原vika.py库API完全兼容
+版本: 1.1.3
+兼容: Python 3.8+
 """
 
 # 主入口类
@@ -31,20 +22,68 @@ from .space import Space, SpaceManager
 from .node import NodeManager
 from .unit import Member, Role, Team
 
-# 类型定义
-from .types import *
+# 通配导入→显式导入，保持 API 稳定
+from .types.response import (
+    APIResponse,
+    RecordData,
+    FieldData,
+    ViewData,
+    SpaceData,
+    AttachmentData,
+    NodeData,
+    RecordsResponse,
+    FieldsResponse,
+    ViewsResponse,
+    DatasheetResponse,
+    SpaceResponse,
+    NodeResponse,
+    AttachmentResponse,
+    PostDatasheetMetaResponse,
+    PostDatasheetMeta,
+)
+# 通配导入→显式导入，保持 API 稳定
+from .types.unit_model import (
+    UnitRoleCreateRo,
+    UnitRoleUpdateRo,
+    UnitMemberCreateRo,
+    UnitTeamCreateRo,
+    UnitModel,
+    MemberModel,
+    RoleModel,
+    TeamModel,
+)
 
-# 异常类
-from .exceptions import *
+# 通配导入→显式导入，保持 API 稳定
+from .exceptions import (
+    VikaException,
+    ApiException,
+    APIException,
+    AuthException,
+    ParameterException,
+    PermissionException,
+    RateLimitException,
+    ServerException,
+    AttachmentException,
+    DatasheetNotFoundException,
+    FieldNotFoundException,
+    RecordNotFoundException,
+    create_exception_from_response,
+)
 
-# 常量
-from .const import *
+# 通配导入→显式导入，保持 API 稳定
+from .const import (
+    DEFAULT_API_BASE,
+    MAX_RECORDS_PER_REQUEST,
+    MAX_RECORDS_PER_PROCESS,
+    FIELD_TYPE_MAP,
+    PYTHON_TYPE_MAP,
+)
 
 # 工具函数
 from .utils import get_dst_id, get_space_id
 
 # 版本信息
-__version__ = "0.9.2"
+__version__ = "1.1.3"
 __author__ = "AstralSolipsism"
 
 # 主要导出（与原库兼容）

@@ -6,9 +6,14 @@
 from typing import Dict, Any, Optional, Union, List
 from datetime import datetime
 from pydantic import parse_obj_as
+# 引入模块级 logger
+import logging
+import asyncio
 from ..exceptions import ParameterException, FieldNotFoundException
 from ..types.response import AttachmentData, UrlData, WorkDocData, Field
 from ..types.unit_model import MemberModel
+from ..utils import run_sync
+logger = logging.getLogger(__name__)
 
 # 字段类型到Pydantic模型的映射
 FIELD_TYPE_MAP = {
@@ -84,9 +89,14 @@ class Record:
 
         Raises:
             FieldNotFoundException: 如果数据表中不存在该字段。
+            ParameterException: 在无 datasheet 上下文时访问依赖元数据的字段。
         """
         if field_name in self._field_cache:
             return self._field_cache[field_name]
+
+        # 依赖 datasheet 元信息时做显式校验，避免 AttributeError
+        if self._datasheet is None:
+            raise ParameterException("Cannot access record fields requiring datasheet context")
 
         field_meta = self._datasheet.fields.get(field_name)
         if not field_meta:
@@ -112,8 +122,13 @@ class Record:
         except Exception as e:
             # 如果解析失败，返回原始值并打印警告
             # 在实际应用中可能需要更完善的日志记录
-            print(f"Warning: Failed to parse field '{field_name}' with type '{field_type}'. "
-                  f"Returning raw value. Error: {e}")
+            # print→logger，遵循日志规范
+            logger.warning(
+                "Warning: Failed to parse field '%s' with type '%s'. Returning raw value. Error: %s",
+                field_name,
+                field_type,
+                e,
+            )
             parsed_value = raw_value
 
         self._field_cache[field_name] = parsed_value
@@ -203,9 +218,9 @@ class Record:
             self._data['fields'] = {}
         self._data['fields'].update(fields)
     
-    def save(self):
+    async def asave(self):
         """
-        保存记录到数据表
+        保存记录到数据表（异步）
         
         Returns:
             更新结果
@@ -215,14 +230,26 @@ class Record:
         
         if not self.record_id:
             # 新记录，执行创建
-            return self._datasheet.records.create([self.to_dict(include_meta=False)])
+            return await self._datasheet.records.acreate([self.to_dict(include_meta=False)])
         else:
             # 更新现有记录
-            return self._datasheet.records.update([self.to_dict()])
+            return await self._datasheet.records.aupdate([self.to_dict()])
     
-    def delete(self):
+    def save(self):
         """
-        删除记录
+        保存记录到数据表（同步兼容包装）。
+
+        在已有事件循环中请使用 await record.asave()。
+        """
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return run_sync(self.asave())
+        raise RuntimeError("Record.save() cannot be called within a running event loop; use 'await record.asave()' instead.")
+    
+    async def adelete(self):
+        """
+        删除记录（异步）
         
         Returns:
             删除结果
@@ -233,7 +260,19 @@ class Record:
         if not self.record_id:
             raise ParameterException("Cannot delete record without record_id")
         
-        return self._datasheet.records.delete([self.record_id])
+        return await self._datasheet.records.adelete([self.record_id])
+    
+    def delete(self):
+        """
+        删除记录（同步兼容包装）。
+
+        在已有事件循环中请使用 await record.adelete()。
+        """
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return run_sync(self.adelete())
+        raise RuntimeError("Record.delete() cannot be called within a running event loop; use 'await record.adelete()' instead.")
     
     def __str__(self) -> str:
         """字符串表示"""
@@ -279,13 +318,21 @@ class RecordBuilder:
         record_data = {'fields': self._fields.copy()}
         return Record(record_data, self._datasheet)
     
-    def save(self):
-        """构建并保存记录"""
+    async def asave(self):
+        """构建并保存记录（异步）"""
         record = self.build()
         if self._datasheet:
-            return self._datasheet.records.create([record.to_dict(include_meta=False)])
+            return await self._datasheet.records.acreate([record.to_dict(include_meta=False)])
         else:
             raise ParameterException("Cannot save record without datasheet reference")
+    
+    def save(self):
+        """构建并保存记录（同步兼容包装）"""
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            return run_sync(self.asave())
+        raise RuntimeError("RecordBuilder.save() cannot be called within a running event loop; use 'await builder.asave()' instead.")
 
 
 __all__ = ['Record', 'RecordBuilder']

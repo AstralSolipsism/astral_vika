@@ -5,86 +5,125 @@
 """
 import re
 import json
-from typing import Dict, Any, Optional, Union
+from collections import OrderedDict, namedtuple
+from typing import Dict, Any, Optional, Union, Iterator, Coroutine
 from urllib.parse import urlparse, parse_qs
 from functools import wraps, lru_cache
 import time
 import asyncio
+import os
 from .exceptions import create_exception_from_response, ParameterException
+from .const import DEFAULT_API_BASE
+
+def _get_allowed_hosts() -> set:
+    """
+    获取允许的主机集合（严格匹配）。
+    来源优先级：环境变量 VIKA_API_BASE > 常量 DEFAULT_API_BASE。
+    安全：仅当 URL 主机与集合成员严格相等时才认为可信，避免后缀/模糊匹配带来的风险。
+    """
+    hosts = set()
+
+    def _add(url: str):
+        if not url:
+            return
+        # 标准化：去除尾部斜杠，主机名小写
+        parsed = urlparse(url.rstrip('/'))
+        host = parsed.netloc or parsed.path  # 兼容无scheme的主机写法
+        if host:
+            hosts.add(host.lower())
+
+    env_base = os.getenv("VIKA_API_BASE")
+    if env_base:
+        _add(env_base)
+
+    _add(DEFAULT_API_BASE)
+
+    return hosts
 
 
 def get_dst_id(dst_id_or_url: str) -> str:
     """
-    从数据表ID或URL中提取数据表ID
-    
-    Args:
-        dst_id_or_url: 数据表ID或URL
-        
-    Returns:
-        数据表ID
+    从数据表ID或URL中提取数据表ID，并校验URL主机与路径片段。
+    - 仅接受与 DEFAULT_API_BASE 同主机的URL
+    - 路径应包含 /datasheet/ 语义（或通过查询参数 ?dst= 提供）
     """
     if not dst_id_or_url:
         raise ParameterException("dst_id_or_url cannot be empty")
-    
-    # 如果是URL，提取ID
+
+    # URL 分支
     if dst_id_or_url.startswith('http'):
-        try:
-            parsed_url = urlparse(dst_id_or_url)
-            path_parts = parsed_url.path.split('/')
-            
-            # 查找dst开头的ID
-            for part in path_parts:
-                if part.startswith('dst'):
-                    return part
-                    
-            # 从查询参数中查找
-            query_params = parse_qs(parsed_url.query)
-            if 'dst' in query_params:
-                return query_params['dst'][0]
-                
-            raise ParameterException(f"Cannot extract datasheet ID from URL: {dst_id_or_url}")
-        except Exception as e:
-            raise ParameterException(f"Invalid URL format: {dst_id_or_url}") from e
-    
-    # 验证ID格式
+        parsed_url = urlparse(dst_id_or_url)
+        if not parsed_url.scheme or not parsed_url.netloc:
+            raise ParameterException(f"Invalid URL format: {dst_id_or_url}")
+
+        allowed_hosts = _get_allowed_hosts()
+        host = parsed_url.netloc.lower()
+        if host not in allowed_hosts:
+            raise ParameterException(f"Untrusted host: {parsed_url.netloc}")
+
+        path_lower = parsed_url.path.lower()
+        path_parts = parsed_url.path.split('/')
+
+        # 优先从查询参数中提取
+        query_params = parse_qs(parsed_url.query)
+        if 'dst' in query_params:
+            candidate = query_params['dst'][0]
+            if not candidate.startswith('dst'):
+                raise ParameterException("Invalid datasheet id in query parameter")
+            return candidate
+
+        # 路径需具备 datasheet 语义
+        if 'datasheet' not in path_lower and 'datasheets' not in path_lower:
+            raise ParameterException("URL path not valid for datasheet")
+
+        # 从路径段提取
+        for part in path_parts:
+            if part.startswith('dst'):
+                return part
+
+        raise ParameterException(f"Cannot extract datasheet ID from URL: {dst_id_or_url}")
+
+    # 纯ID分支：验证格式
     if not dst_id_or_url.startswith('dst'):
         raise ParameterException(f"Invalid datasheet ID format: {dst_id_or_url}")
-    
+
     return dst_id_or_url
 
 
 def get_space_id(space_id_or_url: str) -> str:
     """
-    从空间ID或URL中提取空间ID
-    
-    Args:
-        space_id_or_url: 空间ID或URL
-        
-    Returns:
-        空间ID
+    从空间ID或URL中提取空间ID，并校验URL主机与路径片段。
+    - 仅接受与 DEFAULT_API_BASE 同主机的URL
+    - 路径应包含 /space/ 语义
     """
     if not space_id_or_url:
         raise ParameterException("space_id_or_url cannot be empty")
-    
-    # 如果是URL，提取ID
+
     if space_id_or_url.startswith('http'):
-        try:
-            parsed_url = urlparse(space_id_or_url)
-            path_parts = parsed_url.path.split('/')
-            
-            # 查找spc开头的ID
-            for part in path_parts:
-                if part.startswith('spc'):
-                    return part
-                    
-            raise ParameterException(f"Cannot extract space ID from URL: {space_id_or_url}")
-        except Exception as e:
-            raise ParameterException(f"Invalid URL format: {space_id_or_url}") from e
-    
-    # 验证ID格式
+        parsed_url = urlparse(space_id_or_url)
+        if not parsed_url.scheme or not parsed_url.netloc:
+            raise ParameterException(f"Invalid URL format: {space_id_or_url}")
+
+        allowed_hosts = _get_allowed_hosts()
+        host = parsed_url.netloc.lower()
+        if host not in allowed_hosts:
+            raise ParameterException(f"Untrusted host: {parsed_url.netloc}")
+
+        path_lower = parsed_url.path.lower()
+        path_parts = parsed_url.path.split('/')
+
+        if 'space' not in path_lower and 'spaces' not in path_lower:
+            raise ParameterException("URL path not valid for space")
+
+        for part in path_parts:
+            if part.startswith('spc'):
+                return part
+
+        raise ParameterException(f"Cannot extract space ID from URL: {space_id_or_url}")
+
     if not space_id_or_url.startswith('spc'):
         raise ParameterException(f"Invalid space ID format: {space_id_or_url}")
-    
+
     return space_id_or_url
 
 
@@ -116,13 +155,63 @@ def handle_response(response_data: Dict[str, Any], status_code: int = 200) -> Di
 
 def timed_lru_cache(seconds: int = 300, maxsize: int = 128):
     """
-    带时间过期的LRU缓存装饰器
+    带时间过期的LRU缓存装饰器，支持同步函数和异步函数。
     
     Args:
         seconds: 缓存过期时间（秒）
         maxsize: 最大缓存条目数
     """
     def decorator(func):
+        if asyncio.iscoroutinefunction(func):
+            cache = OrderedDict()
+            hits = 0
+            misses = 0
+            kw_marker = object()
+            CacheInfo = namedtuple("CacheInfo", "hits misses maxsize currsize")
+
+            def make_key(args, kwargs):
+                if not kwargs:
+                    return args
+                return args + (kw_marker,) + tuple(sorted(kwargs.items()))
+
+            @wraps(func)
+            async def async_wrapper(*args, **kwargs):
+                nonlocal hits, misses
+                key = make_key(args, kwargs)
+                now = time.time()
+
+                try:
+                    expires_at, value = cache[key]
+                except KeyError:
+                    misses += 1
+                else:
+                    if now < expires_at:
+                        hits += 1
+                        cache.move_to_end(key)
+                        return value
+                    misses += 1
+                    cache.pop(key, None)
+
+                value = await func(*args, **kwargs)
+                cache[key] = (time.time() + seconds, value)
+                cache.move_to_end(key)
+                while len(cache) > maxsize:
+                    cache.popitem(last=False)
+                return value
+
+            def cache_clear():
+                nonlocal hits, misses
+                cache.clear()
+                hits = 0
+                misses = 0
+
+            def cache_info():
+                return CacheInfo(hits, misses, maxsize, len(cache))
+
+            async_wrapper.cache_clear = cache_clear
+            async_wrapper.cache_info = cache_info
+            return async_wrapper
+
         func = lru_cache(maxsize=maxsize)(func)
         func.lifetime = seconds
         func.expiration = time.time() + seconds
@@ -222,7 +311,7 @@ def format_records_for_api(records: list, field_key: str = "name") -> list:
     return formatted_records
 
 
-def safe_json_loads(data: str, default=None):
+def safe_json_loads(data: str, default: Any = None) -> Any:
     """
     安全的JSON解析
     
@@ -239,7 +328,7 @@ def safe_json_loads(data: str, default=None):
         return default
 
 
-def chunk_list(lst: list, chunk_size: int):
+def chunk_list(lst: list, chunk_size: int) -> Iterator[list]:
     """
     将列表分块
     
@@ -255,7 +344,7 @@ def chunk_list(lst: list, chunk_size: int):
 
 
 # 异步工具函数
-def run_sync(coro):
+def run_sync(coro: Coroutine[Any, Any, Any]) -> Any:
     """
     在同步代码中运行异步协程
     
@@ -265,18 +354,14 @@ def run_sync(coro):
     Returns:
         协程执行结果
     """
+    # 禁止在活跃事件循环中同步运行以避免死锁/不可预期行为
     try:
-        loop = asyncio.get_event_loop()
-        if loop.is_running():
-            # 如果已经在事件循环中，使用新的事件循环
-            import nest_asyncio
-            nest_asyncio.apply()
-            return loop.run_until_complete(coro)
-        else:
-            return loop.run_until_complete(coro)
+        asyncio.get_running_loop()
     except RuntimeError:
-        # 没有事件循环，创建新的
+        # 无事件循环在运行，使用一次性的 asyncio.run
         return asyncio.run(coro)
+    else:
+        raise RuntimeError("run_sync() cannot be called within a running event loop; use the async API (await the coroutine)")
 
 
 __all__ = [

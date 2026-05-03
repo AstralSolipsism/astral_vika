@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
-from typing import Any, Dict, List, Literal, Optional
+# 清理未使用导入
+from typing import List, Optional, Union
 
-from pydantic import BaseModel, Field
+# 清理未使用导入
+from pydantic import BaseModel
+from enum import Enum
 
 
 # Basic Property Models
@@ -38,11 +41,17 @@ class NumberProperty(BaseModel):
     symbol: Optional[str] = None
 
 
+# 增加枚举约束：货币符号对齐
+class SymbolAlignEnum(str, Enum):
+    Default = "Default"
+    Left = "Left"
+    Right = "Right"
+
 class CurrencyProperty(BaseModel):
     defaultValue: Optional[str] = None
     precision: int
     symbol: str
-    symbolAlign: Optional[str] = "Default"
+    symbolAlign: Optional[Union[SymbolAlignEnum, str]] = SymbolAlignEnum.Default  # 增加枚举约束（保守接受字符串）
 
 
 class PercentProperty(BaseModel):
@@ -98,8 +107,16 @@ class TwoWayLinkProperty(LinkProperty):
 
 
 # Formula Property
+# 增加枚举约束：公式格式类型（保守）
+class FormulaFormatType(str, Enum):
+    DateTime = "DateTime"
+    Number = "Number"
+    Currency = "Currency"
+    Percent = "Percent"
+    Text = "Text"
+
 class FormulaFormat(BaseModel):
-    type: str
+    type: Optional[Union[FormulaFormatType, str]] = None  # 增加枚举约束（未知值回退为字符串）
     # Specific format properties depend on the type
     dateFormat: Optional[str] = None
     timeFormat: Optional[str] = None

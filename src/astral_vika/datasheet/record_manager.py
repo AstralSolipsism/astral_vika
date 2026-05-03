@@ -360,8 +360,12 @@ class RecordManager:
         """删除记录的内部API调用"""
         endpoint = f"datasheets/{self._datasheet._dst_id}/records"
         
-        # 根据维格表API文档，recordIds 必须是逗号分隔的字符串，并通过查询参数传递
-        params = {"recordIds": ",".join(record_ids)}
+        # 参数校验：record_ids 不可为空
+        if not record_ids:
+            raise ParameterException("record_ids cannot be empty for deletion")
+        
+        # Vika expects repeated query params: recordIds=recA&recordIds=recB.
+        params = {"recordIds": record_ids}
         
         return await self._datasheet._apitable.request_adapter.delete(endpoint, params=params)
     

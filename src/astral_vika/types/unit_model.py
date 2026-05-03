@@ -60,49 +60,56 @@ class UnitTeamCreateRo(BaseModel):
     """创建团队请求模型"""
     name: str
     parentId: Optional[str] = None
+    parentUnitId: Optional[str] = None
+    sequence: Optional[int] = None
+    roles: Optional[List[str]] = None
 
 
 class UnitTeamUpdateRo(BaseModel):
     """更新团队请求模型"""
-    name: str
+    name: Optional[str] = None
+    parentUnitId: Optional[str] = None
+    sequence: Optional[int] = None
+    roles: Optional[List[str]] = None
 
 
 class UnitMemberUpdateRo(BaseModel):
     """更新成员请求模型"""
+    name: Optional[str] = None
+    teams: Optional[List[str]] = None
+    roles: Optional[List[str]] = None
     isActive: Optional[bool] = None
 
 
 # 响应模型
-class UnitListResponse(BaseModel):
+class ResponseBase(BaseModel):
+    """通用响应基类"""
+    success: bool
+    code: int
+    message: str
+    data: Optional[Dict[str, Any]] = None  # 收敛响应模型：统一公共字段
+class UnitListResponse(ResponseBase):
     """单元列表响应模型"""
-    success: bool
-    code: int
-    message: str
-    data: Optional[Dict[str, Any]] = None
+    # 收敛响应模型：继承通用响应基类
+    pass
 
 
-class UnitCreateResponse(BaseModel):
+class UnitCreateResponse(ResponseBase):
     """单元创建响应模型"""
-    success: bool
-    code: int
-    message: str
-    data: Optional[Dict[str, Any]] = None
+    # 收敛响应模型：继承通用响应基类
+    pass
 
 
-class UnitUpdateResponse(BaseModel):
+class UnitUpdateResponse(ResponseBase):
     """单元更新响应模型"""
-    success: bool
-    code: int
-    message: str
-    data: Optional[Dict[str, Any]] = None
+    # 收敛响应模型：继承通用响应基类
+    pass
 
 
-class UnitDeleteResponse(BaseModel):
+class UnitDeleteResponse(ResponseBase):
     """单元删除响应模型"""
-    success: bool
-    code: int
-    message: str
-    data: Optional[Dict[str, Any]] = None
+    # 收敛响应模型：继承通用响应基类
+    pass
 
 
 # 权限相关模型

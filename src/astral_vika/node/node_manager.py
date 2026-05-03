@@ -3,10 +3,18 @@
 
 兼容原vika.py库的NodeManager类
 """
-import logging
-from typing import Dict, Any, Optional, List
-from ..exceptions import ParameterException, VikaException
+import time
+from typing import Dict, Any, Optional, List, TYPE_CHECKING, Union
+from ..exceptions import ParameterException, NotFoundException
 from ..types.response import NodeData, NodesData
+from ..const import NODES_API_V2_PREFIX  # API 版本/前缀常量集中管理
+
+if TYPE_CHECKING:
+    from ..space.space import Space
+
+# 分页与计数缓存参数
+_NODES_PAGE_SIZE_DEFAULT = 100
+_COUNT_CACHE_TTL_SECONDS = 60
 
 
 class Node:
@@ -75,7 +83,7 @@ class NodeManager:
     兼容原vika.py库的NodeManager接口
     """
     
-    def __init__(self, space):
+    def __init__(self, space: "Space"):
         """
         初始化节点管理器
         
@@ -83,6 +91,11 @@ class NodeManager:
             space: 空间实例
         """
         self._space = space
+        # 单实例生命周期内的全量结果缓存
+        self._all_nodes_cache: Optional[List[Node]] = None
+        # 计数短期缓存
+        self._count_cache: Optional[int] = None
+        self._count_cache_ts: float = 0.0
     
     async def alist(self) -> List[Node]:
         """
@@ -91,9 +104,13 @@ class NodeManager:
         Returns:
             节点列表
         """
+        # 命中缓存直接返回
+        if self._all_nodes_cache is not None:
+            return self._all_nodes_cache
         response = await self._aget_nodes()
         nodes_data = response.get('data', {}).get('nodes', [])
-        return [Node(node_data) for node_data in nodes_data]
+        self._all_nodes_cache = [Node(node_data) for node_data in nodes_data]
+        return self._all_nodes_cache
     
     async def aall(self) -> List[Node]:
         """
@@ -121,7 +138,9 @@ class NodeManager:
     async def asearch(
         self,
         node_type: Optional[str] = None,
-        permission: Optional[int] = None
+        permission: Optional[int] = None,
+        query: Optional[str] = None,
+        permissions: Optional[Union[int, str, List[Union[int, str]]]] = None
     ) -> List[Node]:
         """
         根据类型和权限搜索节点（异步），使用v2 API。
@@ -129,6 +148,8 @@ class NodeManager:
         Args:
             node_type: 节点类型，例如 'Datasheet'
             permission: 权限级别
+            query: 搜索关键词
+            permissions: 权限级别，支持逗号字符串或列表
             
         Returns:
             匹配的节点列表
@@ -136,8 +157,15 @@ class NodeManager:
         params = {}
         if node_type:
             params['type'] = node_type
-        if permission is not None:
-            params['permission'] = permission
+        if query:
+            params['query'] = query
+        if permissions is None and permission is not None:
+            permissions = permission
+        if permissions is not None:
+            if isinstance(permissions, list):
+                params['permissions'] = ",".join(str(item) for item in permissions)
+            else:
+                params['permissions'] = permissions
         
         response = await self._asearch_nodes(params)
         nodes_data = response.get('data', {}).get('nodes', [])
@@ -153,6 +181,13 @@ class NodeManager:
         Returns:
             匹配的节点列表
         """
+        # 优先尝试服务端过滤
+        try:
+            nodes = await self.asearch(node_type=node_type)
+            return nodes
+        except Exception:
+            # 无法确认后端支持时，回退到本地过滤并复用缓存
+            pass
         nodes = await self.alist()
         return [node for node in nodes if node.type == node_type]
     
@@ -196,7 +231,8 @@ class NodeManager:
         try:
             await self.aget(node_id)
             return True
-        except Exception:
+        # 收窄异常：仅将未找到/参数问题视为不存在
+        except (NotFoundException, ParameterException):
             return False
     
     async def afind_by_name(self, node_name: str, node_type: Optional[str] = None) -> Optional[Node]:
@@ -289,19 +325,12 @@ class NodeManager:
     async def _aget_nodes(self) -> Dict[str, Any]:
         """获取节点列表的内部API调用"""
         endpoint = f"spaces/{self._space._space_id}/nodes"
-        try:
-            return await self._space._apitable.request_adapter.get(endpoint)
-        except VikaException as e:
-            logging.error(f"Failed to get nodes for space {self._space._space_id}: {e}", exc_info=True)
-            return {"success": False, "code": e.code if hasattr(e, 'code') else 500, "message": str(e), "data": {"nodes": []}}
-        except Exception as e:
-            logging.error(f"An unexpected error occurred while getting nodes for space {self._space._space_id}: {e}", exc_info=True)
-            return {"success": False, "code": 500, "message": str(e), "data": {"nodes": []}}
+        return await self._space._apitable.request_adapter.get(endpoint)
 
     async def _asearch_nodes(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """搜索节点的内部API调用 (v2)"""
-        # 注意：硬编码v2 API路径。这是一种临时解决方案。
-        v2_endpoint = f"/fusion/v2/spaces/{self._space._space_id}/nodes"
+        # API 版本/前缀常量集中管理
+        v2_endpoint = f"{NODES_API_V2_PREFIX}/spaces/{self._space._space_id}/nodes"
         return await self._space._apitable.request_adapter.aget(v2_endpoint, params=params)
     
     async def _aget_node_detail(self, node_id: str) -> Dict[str, Any]:
@@ -325,7 +354,7 @@ class NodeManager:
         if payload:
             data['payload'] = payload
         
-        return await self._space._apitable.request_adapter.post(endpoint, json=data)
+        return await self._space._apitable.request_adapter.post(endpoint, json_body=data)
     
     async def _aget_embed_links(self, node_id: str) -> Dict[str, Any]:
         """获取嵌入链接的内部API调用"""
@@ -339,14 +368,66 @@ class NodeManager:
     
     async def __len__(self) -> int:
         """返回节点数量"""
-        nodes = await self.alist()
-        return len(nodes)
+        # 计数端点/缓存避免全量请求
+        now = time.monotonic()
+        if self._count_cache is not None and (now - self._count_cache_ts) < _COUNT_CACHE_TTL_SECONDS:
+            return self._count_cache
+        # 优先使用已存在的全量缓存
+        if self._all_nodes_cache is not None:
+            count = len(self._all_nodes_cache)
+            self._count_cache = count
+            self._count_cache_ts = now
+            return count
+        # 尝试最小页请求以获取统计信息（若后端不返回统计，则保守返回）
+        try:
+            resp = await self._asearch_nodes({'pageNum': 1, 'pageSize': 1})
+            data = resp.get('data', {}) or {}
+            if 'total' in data:
+                count = int(data.get('total') or 0)
+                self._count_cache = count
+                self._count_cache_ts = now
+                return count
+            # 若无total，尽量避免全量请求；保守返回近似或0（局限已注释）
+            nodes_data = data.get('nodes', []) or []
+            has_more = data.get('hasMore')
+            if has_more is False:
+                count = len(nodes_data)
+            else:
+                # 无明确统计字段；返回缓存值或0，并标注局限
+                count = 0
+            self._count_cache = count
+            self._count_cache_ts = now
+            return count
+        except Exception:
+            # 失败时不触发全量下载，返回缓存值或0
+            return self._count_cache if self._count_cache is not None else 0
     
     async def __aiter__(self):
         """支持异步迭代"""
-        nodes = await self.alist()
-        for node in nodes:
-            yield node
+        # 分页流式yield降低内存峰值
+        page_num = 1
+        page_size = _NODES_PAGE_SIZE_DEFAULT
+        while True:
+            try:
+                resp = await self._asearch_nodes({'pageNum': page_num, 'pageSize': page_size})
+            except Exception:
+                # 回退：若v2分页不可用，使用全量缓存一次性遍历
+                nodes = await self.alist()
+                for node in nodes:
+                    yield node
+                return
+            data = resp.get('data', {}) or {}
+            nodes_data = data.get('nodes', []) or []
+            if not nodes_data:
+                return
+            for nd in nodes_data:
+                yield Node(nd)
+            has_more = data.get('hasMore')
+            if has_more is False:
+                return
+            if len(nodes_data) < page_size:
+                return
+            page_num += 1
     
     def __str__(self) -> str:
         return f"NodeManager({self._space})"

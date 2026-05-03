@@ -8,7 +8,7 @@ from ..datasheet import DatasheetManager
 from ..node import NodeManager
 from ..unit import Member, Role, Team
 from ..utils import get_space_id
-from ..exceptions import ParameterException
+from ..exceptions import ParameterException, NotFoundException
 
 
 class Space:
@@ -122,7 +122,11 @@ class Space:
         Returns:
             节点列表
         """
-        nodes = await self._node_manager.alist()
+        # 关键路径异常边界：仅收敛预期异常
+        try:
+            nodes = await self._node_manager.alist()
+        except (ParameterException, NotFoundException):
+            return []
         return [node.raw_data for node in nodes]
     
     async def asearch_nodes(self, query: Optional[str] = None, node_type: Optional[str] = None) -> list:
@@ -136,7 +140,7 @@ class Space:
         Returns:
             搜索结果列表
         """
-        nodes = await self._node_manager.asearch(query, node_type)
+        nodes = await self._node_manager.asearch(query=query, node_type=node_type)
         return [node.raw_data for node in nodes]
     
     async def aget_space_info(self) -> Dict[str, Any]:
@@ -146,14 +150,11 @@ class Space:
         Returns:
             空间信息
         """
-        # 这个方法可能需要专门的API，暂时返回基本信息
-        datasheet_list = await self.aget_datasheet_list()
-        node_list = await self.aget_node_list()
-        return {
-            'id': self._space_id,
-            'datasheetCount': len(datasheet_list),
-            'nodeCount': len(node_list)
-        }
+        spaces = await self._apitable.spaces.alist()
+        for space in spaces:
+            if space.get("id") == self._space_id:
+                return space
+        raise NotFoundException(f"Space '{self._space_id}' not found")
     
     def __str__(self) -> str:
         return f"Space({self._space_id})"
